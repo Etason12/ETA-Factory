@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eta_db
+      POSTGRES_USER: eta
+      POSTGRES_PASSWORD: eta123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eta -d eta_db"]
+      interval: 10s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://eta:eta123@db:5432/eta_db
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-in-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend
+    command: >
+      sh -c "python seed_data.py && gunicorn --bind 0.0.0.0:5000 --reload src.app:app"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-build
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

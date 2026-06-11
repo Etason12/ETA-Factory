@@ -1,0 +1,28 @@
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Python
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+*.db
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Uploads
+uploads/receipts/*

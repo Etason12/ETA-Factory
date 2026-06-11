@@ -1,0 +1,53 @@
+Based on the database schema, code, and rules in the project docs, here's the flow:
+Production → Sales Flow
+1. Production
+- ProductionBatch is created — finished goods are produced from raw materials
+- Batches are stored in a Factory Warehouse (type Factory)
+2. Warehouse → Inventory
+- Finished goods enter inventory via GRV (Goods Receive Voucher) at the factory warehouse
+- InventoryLedger records the movement (movement_type: 'production_receipt')
+- Stock increases in Inventory.quantity_on_hand
+3. Inter-Warehouse Transfer (if needed)
+- Factory → Branch Warehouse via Transfer (Draft → Approved → In Transit → Received)
+- Or Factory → Sales Store directly
+4. Sales
+- Quotation → Sales Order (needs approval per rules)
+- Loading Authorization issued before dispatch
+- GIV (Goods Issue Voucher) created at the warehouse → stock deducted
+- Invoice generated → Payment collected
+Key Rules (from SKILL.md)
+- Customer must go through a Sales Outlet — never directly from warehouse
+- Sales approval is mandatory before loading
+- GIV is required before dispatch
+- Every inventory movement creates a ledger entry (ledger is source of truth)
+- Negative stock is prohibited
+- FIFO valuation is used
+
+Here's the Production → Customer data flow in this ERP system:
+1. Production (Factory)
+- A Production Batch is created — finished goods are produced.
+- Goods are stored at a Factory Warehouse (type Factory).
+2. Inventory Receipt (GRV)
+- A Goods Receive Voucher (GRV) is issued at the factory warehouse.
+- InventoryLedger records the movement as production_receipt.
+- Inventory.quantity_on_hand increases.
+3. Transfer (if needed)
+- Factory → Branch Warehouse or Sales Store via a Transfer.
+- Transfer lifecycle: Draft → Approved → In Transit → Received.
+- On receipt, a GRV at the destination updates that warehouse's stock.
+4. Sales Order
+- Customer places order at a Sales Outlet (customer cannot go directly to warehouse).
+- Quotation → Sales Order (requires approval).
+5. Loading & Dispatch
+- After approval, a Goods Issue Voucher (GIV) is created at the warehouse.
+- Stock is deducted from Inventory.quantity_on_hand.
+- Goods are dispatched to the sales outlet.
+6. Invoicing & Payment
+- Invoice is generated against the sales order.
+- Payment is collected from the customer.
+Key Rules Enforced
+- Customer only interacts via Sales Outlet (never warehouse).
+- Sales approval mandatory before loading.
+- GIV required before dispatch.
+- Every inventory move creates a ledger entry (source of truth).
+- Negative stock prohibited. FIFO valuation used.
