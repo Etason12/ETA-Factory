@@ -59,20 +59,60 @@ def permission_required(permission_name):
     return decorator
 
 
-def audit_log(action, module):
+def audit_log(action, module, entity_getter=None):
+    """Decorator for audit logging with optional entity delta tracking.
+
+    Args:
+        action: Action name (e.g. 'update', 'create', 'delete')
+        module: Module name (e.g. 'Products', 'Sales')
+        entity_getter: Optional callable(*args, **kwargs) -> entity object.
+            The entity must have 'id' attribute and optionally to_dict().
+            If provided, old/new values are recorded.
+    """
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             from models.models import AuditLog, db
+
+            old_entity = None
+            if entity_getter:
+                try:
+                    old_entity = entity_getter(*args, **kwargs)
+                except Exception:
+                    old_entity = None
+
             result = fn(*args, **kwargs)
+
             try:
                 user = get_current_user()
+                entity_type = None
+                entity_id = None
+                old_values = None
+                new_values = None
+
+                if entity_getter and old_entity:
+                    entity_type = old_entity.__class__.__name__
+                    entity_id = old_entity.id
+                    old_values = _model_to_dict(old_entity)
+
+                    # Re-fetch after the function for new state
+                    try:
+                        new_entity = entity_getter(*args, **kwargs)
+                        if new_entity:
+                            new_values = _model_to_dict(new_entity)
+                    except Exception:
+                        new_values = None
+
                 log = AuditLog(
                     user_id=user.id,
                     username=user.username,
                     action=action,
                     module=module,
                     description=f'{action} on {module}',
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    old_values=old_values,
+                    new_values=new_values,
                     branch_id=user.branch_id,
                     ip_address=request.remote_addr,
                 )
@@ -81,7 +121,30 @@ def audit_log(action, module):
             except Exception:
                 db.session.rollback()
                 current_app.logger.error('Audit log failed for %s %s', action, module)
-                raise
             return result
         return wrapper
     return decorator
+
+
+def _model_to_dict(model):
+    """Extract column values from a SQLAlchemy model as a serializable dict."""
+    from sqlalchemy import inspect
+    if model is None:
+        return None
+    mapper = inspect(model)
+    result = {}
+    for col in mapper.columns:
+        key = col.key
+        try:
+            v = getattr(model, key)
+            if isinstance(v, (int, float, str, bool)):
+                result[key] = v
+            elif v is None:
+                result[key] = None
+            elif hasattr(v, 'isoformat'):
+                result[key] = v.isoformat()
+            else:
+                result[key] = str(v)
+        except Exception:
+            pass
+    return result if result else None

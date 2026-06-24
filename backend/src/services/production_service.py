@@ -32,6 +32,41 @@ class ProductionService:
             raise NotFoundError('Production batch not found')
         return batch
 
+    def get_required_materials(
+        self, product_id: int, quantity: float, warehouse_id: int
+    ) -> list[dict[str, Any]]:
+        from models.models import Product, BOMItem, RawMaterial, RawMaterialInventory, db
+        
+        product = Product.query.get(product_id)
+        if not product:
+            raise NotFoundError('Product not found')
+
+        bom_items = BOMItem.query.filter_by(product_id=product_id).all()
+        requirements = []
+        
+        for item in bom_items:
+            required_qty = float(item.quantity) * quantity
+            rm = item.raw_material
+
+            inv = RawMaterialInventory.query.filter(
+                RawMaterialInventory.raw_material_id == item.raw_material_id,
+                RawMaterialInventory.warehouse_id == warehouse_id
+            ).first()
+            available = inv.available_quantity if inv else 0
+            
+            requirements.append({
+                'raw_material_id': item.raw_material_id,
+                'raw_material_name': rm.name,
+                'raw_material_sku': rm.sku,
+                'required_quantity': required_qty,
+                'available_quantity': available,
+                'has_enough': available >= required_qty,
+                'unit_name': rm.unit.name if rm.unit else None,
+                'unit_cost': float(rm.cost_price or 0),
+            })
+            
+        return requirements
+
     def get_batches(
         self,
         page: int = 1,
@@ -70,11 +105,16 @@ class ProductionService:
         if not production_date:
             raise ValidationError('Production date is required')
 
-        from models.models import Product, Warehouse
+        from models.models import Product, Warehouse, BOMItem
 
         product = Product.query.get(product_id)
         if not product:
             raise ValidationError('Product not found')
+
+        # Check if product has BOM defined
+        bom_count = BOMItem.query.filter_by(product_id=product_id).count()
+        if bom_count == 0:
+            raise ValidationError(f'Product {product.name} has no Bill of Materials (BOM) defined. Please create a BOM first.')
 
         warehouse = Warehouse.query.get(warehouse_id)
         if not warehouse:
@@ -100,39 +140,83 @@ class ProductionService:
         batch_id: int,
         approved_by_id: int,
     ) -> ProductionBatch:
+        from models.models import db, BOMItem, RawMaterial, RawMaterialInventory, RawMaterialLedger
         batch = self.get_batch(batch_id)
 
         if batch.status != 'Pending':
             raise ValidationError(f'Batch is already {batch.status}')
+        
+        if batch.production_cost <= 0:
+            raise ValidationError('Production cost must be positive')
 
-        batch.status = 'Approved'
-        batch.approved_by_id = approved_by_id
-        batch.approved_at = datetime.utcnow()
-        self.repo.update(batch)
+        try:
+            # Deduct raw material stock from warehouse-level inventory
+            bom_items = BOMItem.query.filter_by(product_id=batch.product_id).all()
+            for item in bom_items:
+                rm = item.raw_material
+                needed = float(item.quantity) * float(batch.quantity_produced)
 
-        unit_cost = (
-            float(batch.production_cost) / float(batch.quantity_produced)
-            if float(batch.quantity_produced) > 0
-            else 0
-        )
+                inv = RawMaterialInventory.query.filter(
+                    RawMaterialInventory.raw_material_id == item.raw_material_id,
+                    RawMaterialInventory.warehouse_id == batch.warehouse_id
+                ).with_for_update().first()
+                available = inv.available_quantity if inv else 0
 
-        grv = self.inventory_service.create_goods_receive_voucher(
-            warehouse_id=batch.warehouse_id,
-            items=[
-                {
-                    'product_id': batch.product_id,
-                    'quantity': float(batch.quantity_produced),
-                    'unit_cost': unit_cost,
-                    'batch_number': batch.batch_number,
-                }
-            ],
-            reference_type='ProductionBatch',
-            reference_id=batch.id,
-            notes=f'Auto-generated GRV for production batch {batch.batch_number}',
-            created_by_id=approved_by_id,
-            received_by_id=approved_by_id,
-        )
+                if available < needed:
+                    raise ValidationError(
+                        f'Insufficient stock of {rm.name} in warehouse: need {needed}, available {available}'
+                    )
 
-        self.inventory_service.process_goods_receipt(grv.id, approved_by_id)
+                inv.quantity_on_hand = float(inv.quantity_on_hand or 0) - needed
 
-        return batch
+                ledger = RawMaterialLedger(
+                    raw_material_id=item.raw_material_id,
+                    warehouse_id=batch.warehouse_id,
+                    movement_type='ProductionIssue',
+                    quantity=-needed,
+                    unit_cost=float(rm.cost_price or 0),
+                    reference_type='ProductionBatch',
+                    reference_id=batch.id,
+                    created_by_id=approved_by_id,
+                )
+                db.session.add(ledger)
+
+            batch.status = 'Approved'
+            batch.approved_by_id = approved_by_id
+            batch.approved_at = datetime.utcnow()
+            self.repo.update(batch)
+
+            unit_cost = (
+                float(batch.production_cost) / float(batch.quantity_produced)
+                if float(batch.quantity_produced) > 0
+                else 0
+            )
+
+            grv = self.inventory_service.create_goods_receive_voucher(
+                warehouse_id=batch.warehouse_id,
+                items=[
+                    {
+                        'product_id': batch.product_id,
+                        'quantity': float(batch.quantity_produced),
+                        'unit_cost': unit_cost,
+                        'batch_number': batch.batch_number,
+                    }
+                ],
+                reference_type='ProductionBatch',
+                reference_id=batch.id,
+                notes=f'Auto-generated GRV for production batch {batch.batch_number}',
+                created_by_id=approved_by_id,
+                received_by_id=approved_by_id,
+            )
+
+            self.inventory_service.process_goods_receipt(grv.id, approved_by_id)
+
+            product = batch.product
+            product.cost_price = unit_cost
+            db.session.add(product)
+
+            db.session.commit()
+            return batch
+        except Exception:
+            db.session.rollback()
+            raise

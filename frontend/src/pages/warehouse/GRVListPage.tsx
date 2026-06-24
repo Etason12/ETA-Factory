@@ -16,7 +16,7 @@ import { warehousesApi, productsApi } from '../../api/endpoints';
 import { blurActiveElement } from '../../utils/focus';
 import { useAuthStore } from '../../store/authStore';
 import type { GoodsReceiveVoucher, GRVItem, Warehouse, Product } from '../../types';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr, monthAgoStr } from '../../utils/format';
 
 interface LineItem {
   product_id: number;
@@ -35,8 +35,8 @@ export default function GRVListPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailGRV, setDetailGRV] = useState<GoodsReceiveVoucher | null>(null);
@@ -44,7 +44,7 @@ export default function GRVListPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [form, setForm] = useState({
-    warehouse_id: 0, voucher_date: new Date().toISOString().split('T')[0],
+    warehouse_id: 0, voucher_date: todayStr,
     reference_type: '', notes: '',
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -62,6 +62,16 @@ export default function GRVListPage() {
       setLoading(false);
     }
   }, [page, perPage, dateFrom, dateTo]);
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this GRV?')) return;
+    try {
+      await warehousesApi.deleteGrv(id);
+      fetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to delete');
+    }
+  };
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -133,7 +143,7 @@ export default function GRVListPage() {
       });
       blurActiveElement();
       setFormOpen(false);
-      setForm({ warehouse_id: 0, voucher_date: new Date().toISOString().split('T')[0], reference_type: '', notes: '' });
+      setForm({ warehouse_id: 0, voucher_date: todayStr, reference_type: '', notes: '' });
       setLineItems([]);
       fetch();
     } catch (err: any) {
@@ -166,6 +176,13 @@ export default function GRVListPage() {
             <Tooltip title="Approve GRV">
               <IconButton size="small" color="success" onClick={() => setApproveTarget(row)}>
                 <CheckCircleIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.status === 'Draft' && (
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}

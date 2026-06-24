@@ -20,8 +20,8 @@ interface FormData {
   is_active: boolean;
 }
 
-const emptyForm: FormData = {
-  customer_code: '',
+const emptyForm = (): FormData => ({
+  customer_code: `CUST-${Date.now()}`,
   name: '',
   phone: '',
   email: '',
@@ -31,14 +31,14 @@ const emptyForm: FormData = {
   credit_limit: 0,
   branch_id: 0,
   is_active: true,
-};
+});
 
 export default function CustomerFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = Boolean(id);
 
-  const [form, setForm] = useState<FormData>(emptyForm);
+  const [form, setForm] = useState<FormData>(emptyForm());
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

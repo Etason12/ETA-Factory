@@ -14,6 +14,8 @@ def generate_unique_code(prefix: str) -> str:
 
 
 def paginate(query, page: int = 1, per_page: int = 20):
+    per_page = max(1, min(per_page, 100))
+    page = max(1, page)
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     return {
         'items': pagination.items,
@@ -22,6 +24,11 @@ def paginate(query, page: int = 1, per_page: int = 20):
         'per_page': pagination.per_page,
         'pages': pagination.pages,
     }
+
+
+def escape_like(value: str) -> str:
+    """Escape % and _ wildcards for use in SQLAlchemy ilike patterns."""
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
 def to_dict(model, exclude: set = None) -> dict[str, Any]:

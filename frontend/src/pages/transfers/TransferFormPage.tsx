@@ -8,6 +8,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { transfersApi, productsApi, warehousesApi } from '../../api/endpoints';
+import { todayStr } from '../../utils/format';
 import type { Product, Warehouse } from '../../types';
 
 interface LineItem {
@@ -27,7 +28,7 @@ export default function TransferFormPage() {
   const [form, setForm] = useState({
     source_warehouse_id: 0,
     destination_warehouse_id: 0,
-    transfer_date: new Date().toISOString().split('T')[0],
+    transfer_date: todayStr,
     notes: '',
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([]);

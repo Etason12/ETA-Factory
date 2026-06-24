@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:5000/api/v1',
+  baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -41,7 +41,9 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         if (refreshToken) {
-          const { data } = await axios.post('http://localhost:5000/api/v1/auth/refresh', { refresh_token: refreshToken });
+          const { data } = await axios.post('/api/v1/auth/refresh', null, {
+            headers: { Authorization: `Bearer ${refreshToken}` },
+          });
           localStorage.setItem('access_token', data.access_token);
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${data.access_token}`;

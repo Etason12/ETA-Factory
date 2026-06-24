@@ -6,6 +6,7 @@ import type {
   GoodsReceiveVoucher, GoodsIssueVoucher, DisposalVoucher, Transfer,
   LoadingAuthorization, AuditLog, PaginatedResponse,
   LoginRequest, LoginResponse, DashboardMetrics, Company,
+  Role, Permission,
 } from '../types';
 
 export const authApi = {
@@ -50,8 +51,13 @@ export const warehousesApi = {
   createDisposal: (data: any) => apiClient.post<any>('/warehouses/disposal', data).then(r => r.data),
   getDisposal: (id: number) => apiClient.get<any>(`/warehouses/disposal/${id}`).then(r => r.data.disposal || r.data),
   approveDisposal: (id: number) => apiClient.put(`/warehouses/disposal/${id}/approve`).then(r => r.data),
+  deleteDisposal: (id: number) => apiClient.delete(`/warehouses/disposal/${id}`).then(r => r.data),
+  deleteGrv: (id: number) => apiClient.delete(`/warehouses/grv/${id}`).then(r => r.data),
+  deleteGiv: (id: number) => apiClient.delete(`/warehouses/giv/${id}`).then(r => r.data),
   listAdjustments: (params?: any) => apiClient.get<any>('/warehouses/adjustments', { params }).then(r => r.data),
   createAdjustment: (data: any) => apiClient.post<any>('/warehouses/adjustments', data).then(r => r.data),
+  approveAdjustment: (id: number) => apiClient.put(`/warehouses/adjustments/${id}/approve`).then(r => r.data),
+  deleteAdjustment: (id: number) => apiClient.delete(`/warehouses/adjustments/${id}`).then(r => r.data),
 };
 
 export const productsApi = {
@@ -68,6 +74,17 @@ export const productsApi = {
   createUnit: (data: Partial<Unit>) => apiClient.post<any>('/products/units', data).then(r => r.data),
   updateUnit: (id: number, data: Partial<Unit>) => apiClient.put<any>(`/products/units/${id}`, data).then(r => r.data),
   deleteUnit: (id: number) => apiClient.delete(`/products/units/${id}`).then(r => r.data),
+  getBom: (id: number) => apiClient.get<any>(`/products/${id}/bom`).then(r => r.data),
+  addUpdateBom: (id: number, data: { raw_material_id: number; quantity: number }) => apiClient.post<any>(`/products/${id}/bom`, data).then(r => r.data),
+  deleteBom: (id: number, raw_material_id: number) => apiClient.delete(`/products/${id}/bom/${raw_material_id}`).then(r => r.data),
+};
+
+export const rawMaterialsApi = {
+  list: (params?: any) => apiClient.get<any>('/raw-materials', { params }).then(r => r.data),
+  create: (data: any) => apiClient.post<any>('/raw-materials', data).then(r => r.data),
+  get: (id: number) => apiClient.get<any>(`/raw-materials/${id}`).then(r => r.data.raw_material || r.data),
+  update: (id: number, data: any) => apiClient.put<any>(`/raw-materials/${id}`, data).then(r => r.data),
+  delete: (id: number) => apiClient.delete(`/raw-materials/${id}`).then(r => r.data),
 };
 
 export const customersApi = {
@@ -89,9 +106,12 @@ export const inventoryApi = {
   summary: () => apiClient.get<any>('/inventory/summary').then(r => r.data),
   lowStock: (params?: any) => apiClient.get<any>('/inventory/low-stock', { params }).then(r => r.data),
   binCard: (params: any) => apiClient.get<any>('/inventory/bin-card', { params }).then(r => r.data),
+  warehouseMonthlyReport: (params: any) => apiClient.get<any>('/inventory/warehouse-monthly-report', { params }).then(r => r.data),
   openingBalances: {
     list: (params?: any) => apiClient.get('/inventory/opening-balances', { params }).then(r => r.data),
     create: (data: any) => apiClient.post('/inventory/opening-balances', data).then(r => r.data),
+    listRawMaterials: (params?: any) => apiClient.get('/inventory/opening-balances/raw-materials', { params }).then(r => r.data),
+    createRawMaterials: (data: any) => apiClient.post('/inventory/opening-balances/raw-materials', data).then(r => r.data),
   },
 };
 
@@ -101,6 +121,9 @@ export const productionApi = {
   get: (id: number) => apiClient.get<any>(`/production/batches/${id}`).then(r => r.data.batch || r.data),
   approve: (id: number) => apiClient.put(`/production/batches/${id}/approve`).then(r => r.data),
   cancel: (id: number) => apiClient.put(`/production/batches/${id}/cancel`).then(r => r.data),
+  delete: (id: number) => apiClient.delete(`/production/batches/${id}`).then(r => r.data),
+  checkRequirements: (params: { product_id: number; quantity: number; warehouse_id: number }) =>
+    apiClient.get<{ requirements: any[] }>('/production/check-requirements', { params }).then(r => r.data.requirements),
 };
 
 export const salesApi = {
@@ -116,6 +139,7 @@ export const salesApi = {
     list: (params?: any) => apiClient.get<PaginatedResponse<SalesOrder>>('/sales/orders', { params }).then(r => r.data),
     create: (data: any) => apiClient.post<SalesOrder>('/sales/orders', data).then(r => r.data),
     get: (id: number) => apiClient.get<any>(`/sales/orders/${id}`).then(r => r.data.order || r.data),
+    update: (id: number, data: any) => apiClient.put<SalesOrder>(`/sales/orders/${id}`, data).then(r => r.data),
     approve: (id: number) => apiClient.put(`/sales/orders/${id}/approve`).then(r => r.data),
     cancel: (id: number) => apiClient.put(`/sales/orders/${id}/cancel`).then(r => r.data),
   },
@@ -127,12 +151,15 @@ export const salesApi = {
   },
   payments: {
     list: (params?: any) => apiClient.get<PaginatedResponse<Payment>>('/sales/payments', { params }).then(r => r.data),
+    getReceipt: (id: number) => apiClient.get(`/sales/payments/${id}/receipt`, { responseType: 'blob' }).then(r => r.data),
   },
   loadingAuthorizations: {
-    list: (params?: any) => apiClient.get<PaginatedResponse<LoadingAuthorization>>('/sales/loading-authorizations', { params }).then(r => r.data),
+    list: (params?: any) => apiClient.get('/sales/loading-authorizations', { params }).then(r => r.data),
     create: (data: any) => apiClient.post<LoadingAuthorization>('/sales/loading-authorizations', data).then(r => r.data),
     approve: (id: number) => apiClient.put(`/sales/loading-authorizations/${id}/approve`).then(r => r.data),
   },
+  getRevenue: () => apiClient.get<{ total_revenue: number }>('/sales/revenue').then(r => r.data),
+  getRevenueTrend: () => apiClient.get<{ name: string; revenue: number }[]>('/sales/revenue/trend').then(r => r.data),
 };
 
 export const transfersApi = {
@@ -143,6 +170,7 @@ export const transfersApi = {
   issue: (id: number) => apiClient.put(`/transfers/${id}/issue`).then(r => r.data),
   receive: (id: number) => apiClient.put(`/transfers/${id}/receive`).then(r => r.data),
   cancel: (id: number) => apiClient.put(`/transfers/${id}/cancel`).then(r => r.data),
+  delete: (id: number) => apiClient.delete(`/transfers/${id}`).then(r => r.data),
 };
 
 export const reportsApi = {
@@ -162,6 +190,56 @@ export const companyApi = {
   update: (data: Partial<Company>) => apiClient.put<{ company: Company }>('/company', data).then(r => r.data.company),
 };
 
+export const suppliersApi = {
+  list: (params?: any) => apiClient.get<any>('/suppliers', { params }).then(r => r.data),
+  create: (data: any) => apiClient.post<any>('/suppliers', data).then(r => r.data),
+  get: (id: number) => apiClient.get<any>(`/suppliers/${id}`).then(r => r.data.supplier || r.data),
+  update: (id: number, data: any) => apiClient.put<any>(`/suppliers/${id}`, data).then(r => r.data),
+  delete: (id: number) => apiClient.delete(`/suppliers/${id}`).then(r => r.data),
+};
+
+export const purchasingApi = {
+  list: (params?: any) => apiClient.get<any>('/purchasing/orders', { params }).then(r => r.data),
+  create: (data: any) => apiClient.post<any>('/purchasing/orders', data).then(r => r.data),
+  get: (id: number) => apiClient.get<any>(`/purchasing/orders/${id}`).then(r => r.data.purchase_order || r.data),
+  update: (id: number, data: any) => apiClient.put<any>(`/purchasing/orders/${id}`, data).then(r => r.data),
+  submit: (id: number) => apiClient.put(`/purchasing/orders/${id}/submit`).then(r => r.data),
+  receive: (id: number, data: any) => apiClient.put(`/purchasing/orders/${id}/receive`, data).then(r => r.data),
+  cancel: (id: number) => apiClient.put(`/purchasing/orders/${id}/cancel`).then(r => r.data),
+  delete: (id: number) => apiClient.delete(`/purchasing/orders/${id}`).then(r => r.data),
+};
+
+export const storeApi = {
+  requisitions: {
+    list: (params?: any) => apiClient.get<any>('/store/requisitions', { params }).then(r => r.data),
+    create: (data: any) => apiClient.post<any>('/store/requisitions', data).then(r => r.data),
+    get: (id: number) => apiClient.get<any>(`/store/requisitions/${id}`).then(r => r.data.requisition || r.data),
+    approve: (id: number) => apiClient.put(`/store/requisitions/${id}/approve`).then(r => r.data),
+    issue: (id: number, data?: any) => apiClient.put(`/store/requisitions/${id}/issue`, data).then(r => r.data),
+    cancel: (id: number) => apiClient.put(`/store/requisitions/${id}/cancel`).then(r => r.data),
+    delete: (id: number) => apiClient.delete(`/store/requisitions/${id}`).then(r => r.data),
+    createFromBatch: (batchId: number) => apiClient.post<any>(`/store/requisitions/from-batch/${batchId}`).then(r => r.data),
+  },
+  inventory: {
+    list: (params?: any) => apiClient.get<any>('/store/inventory', { params }).then(r => r.data),
+    get: (rm_id: number, warehouse_id: number) => apiClient.get<any>(`/store/inventory/${rm_id}/${warehouse_id}`).then(r => r.data),
+  },
+  ledger: {
+    list: (params?: any) => apiClient.get<any>('/store/ledger', { params }).then(r => r.data),
+  },
+};
+
 export const auditApi = {
   list: (params?: any) => apiClient.get<PaginatedResponse<AuditLog>>('/audit/logs', { params }).then(r => r.data),
+};
+
+export const rolesApi = {
+  list: () => apiClient.get<Role[]>('/roles').then(r => r.data),
+  get: (id: number) => apiClient.get<any>(`/roles/${id}`).then(r => r.data),
+  create: (data: { name: string; description?: string }) => apiClient.post<{ message: string; id: number }>('/roles', data).then(r => r.data),
+  update: (id: number, data: { name: string; description?: string }) => apiClient.put(`/roles/${id}`, data).then(r => r.data),
+  delete: (id: number) => apiClient.delete(`/roles/${id}`).then(r => r.data),
+  getPermissions: (id: number) => apiClient.get<{ role_id: number; permission_ids: number[] }>(`/roles/${id}/permissions`).then(r => r.data),
+  updatePermissions: (id: number, permission_ids: number[]) => apiClient.put(`/roles/${id}/permissions`, { permission_ids }).then(r => r.data),
+  listPermissions: () => apiClient.get<Permission[]>('/roles/permissions').then(r => r.data),
 };

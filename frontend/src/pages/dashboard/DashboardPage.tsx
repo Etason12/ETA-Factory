@@ -5,7 +5,8 @@ import {
   List, ListItem, ListItemText, Divider, useMediaQuery, useTheme,
 } from '@mui/material';
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid
+  LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 
 import InventoryIcon from '@mui/icons-material/Inventory';
@@ -71,13 +72,7 @@ const quickActions = [
 ];
 
 
-const mockRevenueData = [
-  { name: 'Jan', revenue: 4000 },
-  { name: 'Feb', revenue: 3000 },
-  { name: 'Mar', revenue: 5000 },
-  { name: 'Apr', revenue: 4500 },
-  { name: 'May', revenue: 6000 },
-];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -87,23 +82,46 @@ export default function DashboardPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: async () => {
-      const [products, customers, orders, transfers, production, audit] = await Promise.all([
+      const [products, customers, orders, transfers, production, audit, revenue, trend, orderStats, prodTrend] = await Promise.all([
         productsApi.list({ per_page: 1 }).catch(() => ({ items: [], total: 0 })),
         customersApi.list({ per_page: 1 }).catch(() => ({ items: [], total: 0 })),
         salesApi.orders.list({ per_page: 1 }).catch(() => ({ items: [], total: 0 })),
         transfersApi.list({ per_page: 1 }).catch(() => ({ items: [], total: 0 })),
         productionApi.list({ per_page: 1 }).catch(() => ({ items: [], total: 0 })),
         auditApi.list({ per_page: 5 }).catch(() => ({ items: [], total: 0 })),
+        salesApi.getRevenue().catch(() => ({ total_revenue: 0 })),
+        salesApi.getRevenueTrend().catch(() => []),
+        salesApi.orders.list({ per_page: 100 }).catch(() => ({ items: [] })),
+        productionApi.list({ per_page: 20 }).catch(() => ({ items: [] })),
       ]);
+      const revenueData = trend.length > 0 ? trend : MONTHS.map((name) => ({ name, revenue: 0 }));
+      const statusCounts: Record<string, number> = {};
+      for (const o of orderStats.items || []) {
+        const s = (o as unknown as Record<string, unknown>).status as string || 'Unknown';
+        statusCounts[s] = (statusCounts[s] || 0) + 1;
+      }
+      const orderStatusData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
+      const prodByMonth: Record<string, number> = {};
+      for (const b of prodTrend.items || []) {
+        const date = (b as unknown as Record<string, unknown>).created_at as string;
+        if (date) {
+          const m = dayjs(date).format('MMM');
+          prodByMonth[m] = (prodByMonth[m] || 0) + 1;
+        }
+      }
+      const productionTrendData = MONTHS.map((name) => ({ name, batches: prodByMonth[name] || 0 }));
       return {
         total_products: products.total,
         total_customers: customers.total,
         active_orders: orders.total,
-        total_revenue: 0,
+        total_revenue: revenue.total_revenue,
         pending_transfers: transfers.total,
         low_stock_items: 0,
         production_batches: production.total,
         recentActivity: audit.items as AuditLog[],
+        revenueData,
+        orderStatusData,
+        productionTrendData,
       };
     },
   });
@@ -138,7 +156,7 @@ export default function DashboardPage() {
         <Typography variant="h6" sx={{ mb: 2 }}>Revenue Trend</Typography>
         <Box sx={{ height: 300 }}>
             <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={mockRevenueData}>
+                <LineChart data={data?.revenueData ?? []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />
@@ -148,6 +166,49 @@ export default function DashboardPage() {
             </ResponsiveContainer>
         </Box>
       </Paper>
+
+      <Grid container spacing={4} sx={{ mt: 1 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Order Status Breakdown</Typography>
+            <Box sx={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={data?.orderStatusData ?? []}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {(data?.orderStatusData ?? []).map((_, i) => (
+                      <Cell key={i} fill={[theme.palette.primary.main, theme.palette.success.main, theme.palette.warning.main, theme.palette.error.main, theme.palette.info.main][i % 5]} />
+                    ))}
+                  </Pie>
+                  <Legend />
+                  <RechartsTooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Production Batches by Month</Typography>
+            <Box sx={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={data?.productionTrendData ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <RechartsTooltip />
+                  <Bar dataKey="batches" fill={theme.palette.secondary.main} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
 
       <Typography variant="h6" sx={{ mt: 5, mb: 3 }}>
         Quick Actions

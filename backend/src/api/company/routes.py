@@ -2,19 +2,21 @@ import os, shutil, tempfile, traceback
 from datetime import datetime
 from flask import jsonify, request, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from flask_cors import cross_origin
 from models.models import (
-    Company, db, User, Role, RolePermission, Permission, Branch,
-    Warehouse, ProductCategory, Unit, Product, Customer,
-    Inventory, InventoryLedger, ProductionBatch,
-    SalesQuotation, SalesQuotationItem, SalesOrder, SalesOrderItem,
-    Invoice, Payment, GoodsReceiveVoucher, GRVItem,
-    GoodsIssueVoucher, GIVItem, Transfer, TransferItem,
-    LoadingAuthorization, StockAdjustment, StockAdjustmentItem,
-    ReturnVoucher, ReturnVoucherItem, AuditLog,
+    BOMItem, Company, Customer, db, DisposalVoucher, DisposalVoucherItem,
+    GoodsIssueVoucher, GoodsReceiveVoucher, GIVItem, GRVItem,
+    Inventory, InventoryLedger, Invoice, LoadingAuthorization, Payment,
+    Permission, Product, ProductCategory, ProductionBatch,
+    PurchaseOrder, PurchaseOrderItem,
+    RawMaterial, RawMaterialInventory, RawMaterialLedger,
+    ReturnVoucher, ReturnVoucherItem, Role, RolePermission,
+    SalesOrder, SalesOrderItem, SalesQuotation, SalesQuotationItem,
+    StockAdjustment, StockAdjustmentItem,
+    StoreRequisition, StoreRequisitionItem, Supplier,
+    Transfer, TransferItem, Unit, User, Warehouse, Branch, AuditLog,
 )
 from utils.error_handlers import NotFoundError, ValidationError, AppError
-from api.decorators import role_required, audit_log
+from api.decorators import role_required, permission_required, audit_log
 from . import company_bp
 
 
@@ -30,7 +32,7 @@ def get_company():
 @company_bp.route('', methods=['PUT'])
 @jwt_required()
 @audit_log('update', 'Company')
-@role_required('Owner')
+@permission_required('company.edit')
 def update_company():
     company = Company.query.first()
     if not company:
@@ -75,7 +77,7 @@ def update_company():
 
 @company_bp.route('/backup', methods=['GET'])
 @jwt_required()
-@role_required('Owner')
+@permission_required('company.backup')
 def backup_database():
     db_path = _get_db_path()
     if not db_path or not os.path.exists(db_path):
@@ -92,7 +94,7 @@ def backup_database():
 
 @company_bp.route('/backup', methods=['POST'])
 @jwt_required()
-@role_required('Owner')
+@permission_required('company.backup')
 def restore_database():
     db_path = _get_db_path()
     if not db_path:
@@ -138,7 +140,7 @@ def restore_database():
 @company_bp.route('/reset', methods=['POST'])
 @jwt_required()
 @audit_log('reset', 'Database')
-@role_required('Owner')
+@permission_required('company.reset')
 def reset_database():
     data = request.get_json() or {}
 
@@ -155,9 +157,14 @@ def reset_database():
     if not preserve['users']:
         models_to_delete.extend([AuditLog, ReturnVoucherItem, ReturnVoucher,
             StockAdjustmentItem, StockAdjustment, LoadingAuthorization,
+            DisposalVoucherItem, DisposalVoucher,
             GIVItem, GoodsIssueVoucher, GRVItem, GoodsReceiveVoucher,
             Payment, Invoice, SalesOrderItem, SalesOrder,
             SalesQuotationItem, SalesQuotation, TransferItem, Transfer,
+            StoreRequisitionItem, StoreRequisition,
+            PurchaseOrderItem, PurchaseOrder,
+            RawMaterialLedger, RawMaterialInventory, RawMaterial,
+            BOMItem, Supplier,
             InventoryLedger, Inventory, ProductionBatch, Customer,
             Product, Unit, ProductCategory, Warehouse, Branch,
             RolePermission, Permission, User, Role])
@@ -165,18 +172,28 @@ def reset_database():
     if not preserve['branches']:
         models_to_delete.extend([ReturnVoucherItem, ReturnVoucher,
             StockAdjustmentItem, StockAdjustment, LoadingAuthorization,
+            DisposalVoucherItem, DisposalVoucher,
             GIVItem, GoodsIssueVoucher, GRVItem, GoodsReceiveVoucher,
             Payment, Invoice, SalesOrderItem, SalesOrder,
             SalesQuotationItem, SalesQuotation, TransferItem, Transfer,
+            StoreRequisitionItem, StoreRequisition,
+            PurchaseOrderItem, PurchaseOrder,
+            RawMaterialLedger, RawMaterialInventory, RawMaterial,
+            BOMItem, Supplier,
             InventoryLedger, Inventory, ProductionBatch, Customer,
             Warehouse, Branch])
 
     if not preserve['products']:
         models_to_delete.extend([ReturnVoucherItem, ReturnVoucher,
             StockAdjustmentItem, StockAdjustment, LoadingAuthorization,
+            DisposalVoucherItem, DisposalVoucher,
             GIVItem, GoodsIssueVoucher, GRVItem, GoodsReceiveVoucher,
             Payment, Invoice, SalesOrderItem, SalesOrder,
             SalesQuotationItem, SalesQuotation, TransferItem, Transfer,
+            StoreRequisitionItem, StoreRequisition,
+            PurchaseOrderItem, PurchaseOrder,
+            RawMaterialLedger, RawMaterialInventory, RawMaterial,
+            BOMItem, Supplier,
             InventoryLedger, Inventory, ProductionBatch,
             Product, Unit, ProductCategory])
 

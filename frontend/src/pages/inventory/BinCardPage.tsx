@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Paper, Typography, TextField, MenuItem, Grid2 as Grid, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Chip, FormControl, InputLabel, Select, Button, CircularProgress, Alert,
+  TableCell, TableContainer, TableHead, TableRow, Chip, FormControl, InputLabel,
+  Select, Button, CircularProgress, Alert, Tabs, Tab,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import PageHeader from '../../components/common/PageHeader';
@@ -9,6 +10,7 @@ import { inventoryApi, warehousesApi, productsApi } from '../../api/endpoints';
 import type { Warehouse, Product } from '../../types';
 
 export default function BinCardPage() {
+  const [viewMode, setViewMode] = useState(0);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouseId, setWarehouseId] = useState<number | ''>('');
@@ -30,15 +32,27 @@ export default function BinCardPage() {
   }, []);
 
   const handleSearch = async () => {
-    if (!productId || !warehouseId) return;
+    if (!warehouseId) return;
+    if (viewMode === 0 && !productId) return;
     setLoading(true);
     setSearched(true);
     try {
-      const res = await inventoryApi.binCard({ product_id: productId, warehouse_id: warehouseId, year, month });
-      setReport(res);
+      if (viewMode === 0) {
+        const res = await inventoryApi.binCard({ product_id: productId, warehouse_id: warehouseId, year, month });
+        setReport(res);
+      } else {
+        const res = await inventoryApi.warehouseMonthlyReport({ warehouse_id: warehouseId, year, month });
+        setReport(res);
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewChange = (_: any, newValue: number) => {
+    setViewMode(newValue);
+    setReport(null);
+    setSearched(false);
   };
 
   const months = [
@@ -51,19 +65,25 @@ export default function BinCardPage() {
 
   return (
     <Box>
-      <PageHeader title="Bin Card" subtitle="Monthly stock movement report per product" />
+      <PageHeader title="Bin Card" subtitle="Monthly stock movement report" />
       <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Tabs value={viewMode} onChange={handleViewChange} sx={{ mb: 2 }} textColor="primary" indicatorColor="primary" variant="fullWidth">
+          <Tab label="Per Product" />
+          <Tab label="Per Warehouse" />
+        </Tabs>
         <Grid container spacing={2} alignItems="flex-end">
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Product *</InputLabel>
-              <Select value={productId} label="Product *" onChange={(e) => setProductId(e.target.value as number | '')}>
-                <MenuItem value="">Select product</MenuItem>
-                {products.map(p => <MenuItem key={p.id} value={p.id}>{p.name} ({p.sku})</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          {viewMode === 0 && (
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Product *</InputLabel>
+                <Select value={productId} label="Product *" onChange={(e) => setProductId(e.target.value as number | '')}>
+                  <MenuItem value="">Select product</MenuItem>
+                  {products.map(p => <MenuItem key={p.id} value={p.id}>{p.name} ({p.sku})</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+          )}
+          <Grid size={{ xs: 12, sm: 6, md: viewMode === 0 ? 3 : 4 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Warehouse *</InputLabel>
               <Select value={warehouseId} label="Warehouse *" onChange={(e) => setWarehouseId(e.target.value as number | '')}>
@@ -72,7 +92,7 @@ export default function BinCardPage() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+          <Grid size={{ xs: 6, sm: 3, md: viewMode === 0 ? 2 : 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Month</InputLabel>
               <Select value={month} label="Month" onChange={(e) => setMonth(Number(e.target.value))}>
@@ -80,7 +100,7 @@ export default function BinCardPage() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid size={{ xs: 6, sm: 3, md: 2 }}>
+          <Grid size={{ xs: 6, sm: 3, md: viewMode === 0 ? 2 : 2 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Year</InputLabel>
               <Select value={year} label="Year" onChange={(e) => setYear(Number(e.target.value))}>
@@ -88,8 +108,9 @@ export default function BinCardPage() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid size={{ xs: 12, sm: 3, md: 2 }}>
-            <Button variant="contained" fullWidth startIcon={<SearchIcon />} onClick={handleSearch} disabled={!productId || !warehouseId || loading}>
+          <Grid size={{ xs: 12, sm: 3, md: viewMode === 0 ? 2 : 2 }}>
+            <Button variant="contained" fullWidth startIcon={<SearchIcon />} onClick={handleSearch}
+              disabled={(viewMode === 0 && !productId) || !warehouseId || loading}>
               {loading ? 'Loading...' : 'Generate'}
             </Button>
           </Grid>
@@ -98,7 +119,7 @@ export default function BinCardPage() {
 
       {loading && <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>}
 
-      {report && !loading && (
+      {report && !loading && viewMode === 0 && (
         <Paper sx={{ borderRadius: 2, overflow: 'hidden' }}>
           {!report.has_opening_balance && (
             <Alert severity="info" sx={{ borderRadius: 0 }}>
@@ -156,6 +177,58 @@ export default function BinCardPage() {
                 <TableRow sx={{ bgcolor: '#e3f2fd' }}>
                   <TableCell colSpan={4}><Typography fontWeight={600}>Closing Balance</Typography></TableCell>
                   <TableCell align="right" colSpan={3}><Typography fontWeight={700}>{report.closing_balance}</Typography></TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
+
+      {report && !loading && viewMode === 1 && (
+        <Paper sx={{ borderRadius: 2, overflow: 'hidden' }}>
+          <Box sx={{ p: 3, bgcolor: '#f5f5f5', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="h6">{report.warehouse_name}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {months.find(m => m.value === report.month)?.label} {report.year}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 3, p: 3, bgcolor: '#e3f2fd' }}>
+            <Box><Typography variant="caption" color="text.secondary">Total Opening Balance</Typography><Typography variant="h6">{report.totals.opening_balance}</Typography></Box>
+            <Box><Typography variant="caption" color="text.secondary">Total Inflow</Typography><Typography variant="h6" color="success.main">+{report.totals.total_inflow}</Typography></Box>
+            <Box><Typography variant="caption" color="text.secondary">Total Outflow</Typography><Typography variant="h6" color="error.main">{report.totals.total_outflow}</Typography></Box>
+            <Box><Typography variant="caption" color="text.secondary">Total Closing Balance</Typography><Typography variant="h6">{report.totals.closing_balance}</Typography></Box>
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Product</TableCell>
+                  <TableCell>SKU</TableCell>
+                  <TableCell align="right">Opening</TableCell>
+                  <TableCell align="right">Inflow</TableCell>
+                  <TableCell align="right">Outflow</TableCell>
+                  <TableCell align="right">Closing</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {report.products.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} align="center">No products found in this warehouse</TableCell></TableRow>
+                ) : report.products.map((p: any) => (
+                  <TableRow key={p.product_id}>
+                    <TableCell>{p.product_name}</TableCell>
+                    <TableCell>{p.product_sku}</TableCell>
+                    <TableCell align="right">{p.opening_balance}</TableCell>
+                    <TableCell align="right" sx={{ color: 'success.main' }}>{p.total_inflow > 0 ? p.total_inflow : '-'}</TableCell>
+                    <TableCell align="right" sx={{ color: 'error.main' }}>{p.total_outflow > 0 ? p.total_outflow : '-'}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>{p.closing_balance}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow sx={{ bgcolor: '#e3f2fd' }}>
+                  <TableCell colSpan={2}><Typography fontWeight={700}>Totals</Typography></TableCell>
+                  <TableCell align="right"><Typography fontWeight={700}>{report.totals.opening_balance}</Typography></TableCell>
+                  <TableCell align="right"><Typography fontWeight={700} color="success.main">+{report.totals.total_inflow}</Typography></TableCell>
+                  <TableCell align="right"><Typography fontWeight={700} color="error.main">{report.totals.total_outflow}</Typography></TableCell>
+                  <TableCell align="right"><Typography fontWeight={700}>{report.totals.closing_balance}</Typography></TableCell>
                 </TableRow>
               </TableBody>
             </Table>

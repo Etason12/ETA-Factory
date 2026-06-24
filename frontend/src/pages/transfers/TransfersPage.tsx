@@ -9,11 +9,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import CancelIcon from '@mui/icons-material/Cancel';
+import DeleteIcon from '@mui/icons-material/Delete';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import StatusChip from '../../components/common/StatusChip';
 import { transfersApi } from '../../api/endpoints';
+import { todayStr, monthAgoStr } from '../../utils/format';
 import { blurActiveElement } from '../../utils/focus';
 import { useAuthStore } from '../../store/authStore';
 import type { Transfer } from '../../types';
@@ -30,8 +32,8 @@ export default function TransfersPage() {
   const [perPage, setPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [confirmAction, setConfirmAction] = useState<{ id: number; action: string; label: string } | null>(null);
 
   const fetch = useCallback(async () => {
@@ -50,6 +52,16 @@ export default function TransfersPage() {
   }, [page, perPage, search, dateFrom, dateTo]);
 
   useEffect(() => { fetch(); }, [fetch]);
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this transfer?')) return;
+    try {
+      await transfersApi.delete(id);
+      fetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to delete transfer');
+    }
+  };
 
   const handleAction = async () => {
     if (!confirmAction) return;
@@ -115,6 +127,13 @@ export default function TransfersPage() {
               <IconButton size="small" color="error"
                 onClick={() => setConfirmAction({ id: row.id, action: 'cancel', label: 'cancel' })}>
                 <CancelIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.status === 'Draft' && (
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}

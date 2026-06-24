@@ -18,7 +18,7 @@ import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import { reportsApi } from '../../api/endpoints';
 import { useAuthStore } from '../../store/authStore';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr, monthAgoStr } from '../../utils/format';
 
 interface ReportCard {
   key: string;
@@ -61,8 +61,8 @@ export default function ReportsPage() {
   const [reportData, setReportData] = useState<any[]>([]);
   const [reportMeta, setReportMeta] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
 
   const fetchReport = useCallback(async (card: ReportCard, from: string, to: string) => {
     setLoading(true);

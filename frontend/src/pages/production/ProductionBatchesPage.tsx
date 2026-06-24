@@ -2,15 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, IconButton, Tooltip, Button, Dialog, DialogTitle, DialogContent,
-  DialogContentText, DialogActions, TextField,
+  DialogContentText, DialogActions, TextField, Snackbar, Alert,
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import DeleteIcon from '@mui/icons-material/Delete';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import StatusChip from '../../components/common/StatusChip';
-import { productionApi } from '../../api/endpoints';
+import { productionApi, storeApi } from '../../api/endpoints';
 import { blurActiveElement } from '../../utils/focus';
 import { useAuthStore } from '../../store/authStore';
 import type { ProductionBatch } from '../../types';
@@ -29,6 +31,7 @@ export default function ProductionBatchesPage() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [approveTarget, setApproveTarget] = useState<ProductionBatch | null>(null);
+  const [snackbar, setSnackbar] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -54,6 +57,26 @@ export default function ProductionBatchesPage() {
       fetch();
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.response?.data?.error || 'Failed to approve batch');
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this production batch?')) return;
+    try {
+      await productionApi.delete(id);
+      fetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to delete batch');
+    }
+  };
+
+  const handleCreateRequisition = async (batchId: number) => {
+    try {
+      const res = await storeApi.requisitions.createFromBatch(batchId);
+      setSnackbar({ message: res.message || 'Requisition created', severity: 'success' });
+      fetch();
+    } catch (err: any) {
+      setSnackbar({ message: err?.response?.data?.error || 'Failed to create requisition', severity: 'error' });
     }
   };
 
@@ -94,6 +117,13 @@ export default function ProductionBatchesPage() {
               <VisibilityIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          {row.status === 'Pending' && (
+            <Tooltip title="Create Store Requisition">
+              <IconButton size="small" color="warning" onClick={() => handleCreateRequisition(row.id)}>
+                <LocalShippingIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           {row.status === 'Pending' && canApprove && (
             <Tooltip title="Approve">
               <IconButton size="small" color="success" onClick={() => setApproveTarget(row)}>
@@ -105,6 +135,13 @@ export default function ProductionBatchesPage() {
             <Tooltip title="Cancel">
               <IconButton size="small" color="error" onClick={() => handleCancel(row.id)}>
                 <CancelIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.status === 'Pending' && (
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}
@@ -145,6 +182,17 @@ export default function ProductionBatchesPage() {
           <Button variant="contained" color="success" onClick={handleApprove}>Approve</Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar(null)} severity={snackbar?.severity || 'success'} variant="filled">
+          {snackbar?.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

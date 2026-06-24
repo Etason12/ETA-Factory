@@ -1,9 +1,9 @@
 from flask import jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.models import Branch, db
-from utils.helpers import paginate, generate_unique_code
+from utils.helpers import paginate, generate_unique_code, escape_like
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
-from api.decorators import role_required, permission_required, audit_log
+from api.decorators import permission_required, audit_log
 from . import branches_bp
 
 
@@ -19,11 +19,12 @@ def list_branches():
     query = Branch.query.filter(Branch.is_deleted == False)
 
     if search:
+        safe = escape_like(search)
         query = query.filter(
             db.or_(
-                Branch.name.ilike(f'%{search}%'),
-                Branch.code.ilike(f'%{search}%'),
-                Branch.city.ilike(f'%{search}%'),
+                Branch.name.ilike(f'%{safe}%'),
+                Branch.code.ilike(f'%{safe}%'),
+                Branch.city.ilike(f'%{safe}%'),
             )
         )
     if is_active is not None:
@@ -164,6 +165,12 @@ def delete_branch(id):
     branch = Branch.query.filter(Branch.id == id, Branch.is_deleted == False).first()
     if not branch:
         raise NotFoundError('Branch not found')
+
+    from models.models import Warehouse, User
+    if Warehouse.query.filter_by(branch_id=id, is_deleted=False).first():
+        raise ValidationError('Cannot delete branch with existing warehouses')
+    if User.query.filter_by(branch_id=id, is_deleted=False).first():
+        raise ValidationError('Cannot delete branch with existing users')
 
     branch.soft_delete()
     branch.updated_by_id = int(get_jwt_identity())

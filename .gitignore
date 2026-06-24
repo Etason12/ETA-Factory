@@ -1,10 +1,11 @@
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/tsconfig.tsbuildinfo
 
 # Python
-backend/__pycache__/
-backend/**/__pycache__/
+__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 venv/
@@ -24,5 +25,11 @@ venv/
 Thumbs.db
 .DS_Store
 
+# Logs
+*.log
+
+# Archives
+*.zip
+
 # Uploads
-uploads/receipts/*
+backend/uploads/receipts/*

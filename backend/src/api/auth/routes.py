@@ -133,4 +133,6 @@ def me():
     user = User.query.get(int(get_jwt_identity()))
     if not user:
         raise NotFoundError('User not found')
+    if not user.is_active or user.is_deleted:
+        raise UnauthorizedError('Account is inactive or has been deleted')
     return jsonify({'user': user.to_dict()}), 200

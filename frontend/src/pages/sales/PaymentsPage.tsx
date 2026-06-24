@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Box, TextField, Typography, Snackbar, Alert, Link } from '@mui/material';
-import { Search, OpenInNew } from '@mui/icons-material';
+import { Box, TextField, Typography, Snackbar, Alert, Link, IconButton, Tooltip } from '@mui/material';
+import { Search, OpenInNew, Print } from '@mui/icons-material';
 import { salesApi } from '../../api/endpoints';
 import type { Payment } from '../../types';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr, monthAgoStr } from '../../utils/format';
 import apiClient from '../../api/client';
 
 export default function PaymentsPage() {
@@ -16,8 +16,8 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [errorMsg, setErrorMsg] = useState('');
 
   const fetchPayments = useCallback(async () => {
@@ -42,6 +42,11 @@ export default function PaymentsPage() {
   }, [fetchPayments]);
 
   const backendOrigin = apiClient.defaults.baseURL?.replace(/\/api\/v1\/?$/, '') || 'http://localhost:5000';
+
+  const handlePrintReceipt = (paymentId: number) => {
+    const token = localStorage.getItem('access_token');
+    window.open(`/api/v1/sales/payments/${paymentId}/receipt-view?token=${token}`, '_blank');
+  };
 
 const columns = [
     { id: 'payment_number', label: 'Payment #' },
@@ -68,6 +73,16 @@ const columns = [
           View <OpenInNew fontSize="small" />
         </Link>
       ) : '-',
+    },
+    {
+      id: 'actions', label: 'Actions', sortable: false, nowrap: true,
+      render: (row: Payment) => (
+        <Tooltip title="Print Receipt">
+          <IconButton size="small" onClick={() => handlePrintReceipt(row.id)} color="primary">
+            <Print fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      ),
     },
   ];
 

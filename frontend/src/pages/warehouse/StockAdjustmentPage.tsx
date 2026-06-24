@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  MenuItem, IconButton, Typography, Grid2 as Grid, Chip,
+  MenuItem, IconButton, Typography, Tooltip, Grid2 as Grid, Chip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CheckIcon from '@mui/icons-material/Check';
 import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import StatusChip from '../../components/common/StatusChip';
 import { warehousesApi } from '../../api/endpoints';
 import { blurActiveElement } from '../../utils/focus';
 import { useAuthStore } from '../../store/authStore';
+import { todayStr, monthAgoStr } from '../../utils/format';
 import type { Warehouse } from '../../types';
 
 export default function StockAdjustmentPage() {
@@ -21,8 +23,8 @@ export default function StockAdjustmentPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [formOpen, setFormOpen] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [form, setForm] = useState({
@@ -46,6 +48,26 @@ export default function StockAdjustmentPage() {
       setLoading(false);
     }
   }, [page, perPage, dateFrom, dateTo]);
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this adjustment?')) return;
+    try {
+      await warehousesApi.deleteAdjustment(id);
+      fetchData();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to delete');
+    }
+  };
+
+  const handleApprove = async (id: number) => {
+    if (!window.confirm('Approve this adjustment? This will update inventory.')) return;
+    try {
+      await warehousesApi.approveAdjustment(id);
+      fetchData();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to approve');
+    }
+  };
 
   useEffect(() => {
     warehousesApi.list({ per_page: 1000 }).then((res) => setWarehouses(res.items));
@@ -115,6 +137,27 @@ export default function StockAdjustmentPage() {
           {
             id: 'created_at', label: 'Date',
             render: (row: any) => row.created_at ? new Date(row.created_at).toLocaleDateString() : '-',
+          },
+          {
+            id: 'actions', label: 'Actions', width: 110,
+            render: (row: any) => (
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                {row.status === 'Draft' && (
+                  <>
+                    <Tooltip title="Approve">
+                      <IconButton size="small" color="success" onClick={() => handleApprove(row.id)}>
+                        <CheckIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                )}
+              </Box>
+            ),
           },
         ]}
         data={data} loading={loading} total={total}

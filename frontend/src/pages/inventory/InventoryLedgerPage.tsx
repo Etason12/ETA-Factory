@@ -4,7 +4,7 @@ import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import { inventoryApi } from '../../api/endpoints';
 import type { InventoryLedger } from '../../types';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr, monthAgoStr } from '../../utils/format';
 
 const MOVEMENT_TYPE_OPTIONS = [
   { value: 'in', label: 'Stock In' },
@@ -43,8 +43,8 @@ export default function InventoryLedgerPage() {
   const [productSearch, setProductSearch] = useState('');
   const [warehouseSearch, setWarehouseSearch] = useState('');
   const [movementType, setMovementType] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
 
   const fetchData = useCallback(async () => {
     setLoading(true);

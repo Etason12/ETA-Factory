@@ -2,27 +2,34 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Box, Button, TextField, MenuItem, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Typography, IconButton,
-  Snackbar, Alert, FormControl, InputLabel, Select,
+  Snackbar, Alert, FormControl, InputLabel, Select, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
-import { inventoryApi, productsApi, warehousesApi } from '../../api/endpoints';
-import type { Product, Warehouse } from '../../types';
+import { inventoryApi, productsApi, warehousesApi, rawMaterialsApi } from '../../api/endpoints';
+import { useAuthStore } from '../../store/authStore';
+import type { Product, Warehouse, RawMaterial } from '../../types';
+
+type ProductType = 'finished_goods' | 'raw_materials';
 
 interface LineItem {
-  product_id: number;
-  product_name: string;
-  product_sku: string;
+  item_id: number;
+  item_name: string;
+  item_sku: string;
+  warehouse_id: number;
   quantity: number;
-  batch_number: string;
   unit_cost: string;
 }
 
 export default function OpeningBalancePage() {
+  const { hasRole } = useAuthStore();
+  const canAdjust = hasRole('Owner', 'General Manager', 'Warehouse Manager', 'Store Keeper');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
+  const [productType, setProductType] = useState<ProductType>('finished_goods');
   const [warehouseId, setWarehouseId] = useState<number | ''>('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -35,11 +42,13 @@ export default function OpeningBalancePage() {
 
   useEffect(() => {
     Promise.all([
-      warehousesApi.list({ per_page: 1000 }),
-      productsApi.list({ per_page: 1000 }),
-    ]).then(([wRes, pRes]) => {
+      warehousesApi.list({ is_active: 1, per_page: 99999 }),
+      productsApi.list({ per_page: 99999 }),
+      rawMaterialsApi.list({ per_page: 99999 }),
+    ]).then(([wRes, pRes, rmRes]) => {
       setWarehouses(wRes.items);
       setProducts(pRes.items);
+      setRawMaterials(rmRes.items || []);
     });
   }, []);
 
@@ -48,7 +57,12 @@ export default function OpeningBalancePage() {
     try {
       const params: any = { page, per_page: 20 };
       if (warehouseId) params.warehouse_id = warehouseId;
-      const res = await inventoryApi.openingBalances.list(params);
+      let res: any;
+      if (productType === 'finished_goods') {
+        res = await inventoryApi.openingBalances.list(params);
+      } else {
+        res = await inventoryApi.openingBalances.listRawMaterials(params);
+      }
       setExisting(res.opening_balances || []);
       setTotal(res.total || 0);
     } catch (err: any) {
@@ -56,23 +70,32 @@ export default function OpeningBalancePage() {
     } finally {
       setLoadingExisting(false);
     }
-  }, [page, warehouseId]);
+  }, [page, warehouseId, productType]);
 
   useEffect(() => { fetchExisting(); }, [fetchExisting]);
 
+  const handleTypeChange = (_: any, newType: ProductType | null) => {
+    if (newType) {
+      setProductType(newType);
+      setLineItems([]);
+      setPage(1);
+    }
+  };
+
   const addLineItem = () => {
-    setLineItems([...lineItems, { product_id: 0, product_name: '', product_sku: '', quantity: 0, batch_number: '', unit_cost: '' }]);
+    setLineItems([...lineItems, { item_id: 0, item_name: '', item_sku: '', warehouse_id: 0, quantity: 0, unit_cost: '' }]);
   };
 
   const updateLineItem = (idx: number, field: keyof LineItem, value: any) => {
     const updated = [...lineItems];
-    if (field === 'product_id') {
-      const product = products.find(p => p.id === value);
+    if (field === 'item_id') {
+      const items = productType === 'finished_goods' ? products : rawMaterials;
+      const item = items.find(p => p.id === value);
       updated[idx] = {
         ...updated[idx],
-        product_id: value,
-        product_name: product?.name || '',
-        product_sku: product?.sku || '',
+        item_id: value,
+        item_name: item?.name || '',
+        item_sku: 'sku' in (item || {}) ? (item as any).sku || '' : '',
       };
     } else {
       (updated[idx] as any)[field] = value;
@@ -85,21 +108,22 @@ export default function OpeningBalancePage() {
   };
 
   const handleSubmit = async () => {
-    if (!warehouseId) { setErrorMsg('Please select a warehouse'); return; }
-    const validItems = lineItems.filter(i => i.product_id > 0 && i.quantity > 0);
-    if (validItems.length === 0) { setErrorMsg('Add at least one product with quantity'); return; }
+    const validItems = lineItems.filter(i => i.item_id > 0 && i.quantity > 0 && i.warehouse_id > 0);
+    if (validItems.length === 0) { setErrorMsg('Add at least one item with item, warehouse, and quantity'); return; }
 
     setSubmitting(true);
     try {
-      await inventoryApi.openingBalances.create(
-        validItems.map(i => ({
-          product_id: i.product_id,
-          warehouse_id: warehouseId,
-          quantity: i.quantity,
-          batch_number: i.batch_number || undefined,
-          unit_cost: i.unit_cost ? Number(i.unit_cost) : undefined,
-        }))
-      );
+      const payload = validItems.map(i => ({
+        ...(productType === 'finished_goods' ? { product_id: i.item_id } : { raw_material_id: i.item_id }),
+        warehouse_id: i.warehouse_id,
+        quantity: i.quantity,
+        unit_cost: i.unit_cost ? Number(i.unit_cost) : undefined,
+      }));
+      if (productType === 'finished_goods') {
+        await inventoryApi.openingBalances.create(payload);
+      } else {
+        await inventoryApi.openingBalances.createRawMaterials(payload);
+      }
       setSuccess('Opening balances recorded successfully');
       setLineItems([]);
       fetchExisting();
@@ -110,62 +134,92 @@ export default function OpeningBalancePage() {
     }
   };
 
+  const items = productType === 'finished_goods' ? products : rawMaterials;
+
   return (
     <Box>
-      <PageHeader title="Opening Balances" subtitle="Set initial stock quantities for products" />
+      <PageHeader title="Opening Balances" subtitle="Set initial stock quantities for products and raw materials" />
       <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'flex-end' }}>
+        <ToggleButtonGroup value={productType} exclusive onChange={handleTypeChange} size="small">
+          <ToggleButton value="finished_goods">Finished Goods</ToggleButton>
+          <ToggleButton value="raw_materials">Raw Materials</ToggleButton>
+        </ToggleButtonGroup>
         <FormControl size="small" sx={{ width: 250 }}>
-          <InputLabel>Warehouse</InputLabel>
-          <Select value={warehouseId} label="Warehouse" onChange={(e) => setWarehouseId(e.target.value as number | '')}>
+          <InputLabel>Filter by Warehouse</InputLabel>
+          <Select value={warehouseId} label="Filter by Warehouse" onChange={(e) => setWarehouseId(e.target.value as number | '')}>
             <MenuItem value="">All</MenuItem>
             {warehouses.map(w => <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>)}
           </Select>
         </FormControl>
       </Box>
 
-      <Typography variant="h6" sx={{ mb: 2 }}>Set Opening Balance</Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
-        {lineItems.map((item, idx) => (
-          <Box key={idx} sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <TextField select label="Product" size="small" sx={{ flex: 2, minWidth: 200 }}
-              value={item.product_id}
-              onChange={(e) => updateLineItem(idx, 'product_id', Number(e.target.value))}>
-              <MenuItem value={0} disabled>Select product</MenuItem>
-              {products.map(p => <MenuItem key={p.id} value={p.id}>{p.name} ({p.sku})</MenuItem>)}
-            </TextField>
-            <TextField label="Qty" type="number" size="small" sx={{ flex: 1, minWidth: 100 }}
-              value={item.quantity} slotProps={{ htmlInput: { min: 0 } }}
-              onChange={(e) => updateLineItem(idx, 'quantity', Number(e.target.value))} />
-            <TextField label="Batch #" size="small" sx={{ flex: 1, minWidth: 120 }}
-              value={item.batch_number}
-              onChange={(e) => updateLineItem(idx, 'batch_number', e.target.value)} />
-            <TextField label="Unit Cost" type="number" size="small" sx={{ flex: 1, minWidth: 120 }}
-              value={item.unit_cost} slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
-              onChange={(e) => updateLineItem(idx, 'unit_cost', e.target.value)} />
-            <IconButton color="error" onClick={() => removeLineItem(idx)}><DeleteIcon /></IconButton>
+      {canAdjust && (
+        <>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Set Opening Balance — {productType === 'finished_goods' ? 'Finished Goods' : 'Raw Materials'}
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
+            {lineItems.map((item, idx) => (
+              <Box key={idx} sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                <TextField select label={productType === 'finished_goods' ? 'Product' : 'Raw Material'} size="small" sx={{ flex: 2, minWidth: 200 }}
+                  value={item.item_id}
+                  onChange={(e) => updateLineItem(idx, 'item_id', Number(e.target.value))}>
+                  <MenuItem value={0} disabled>Select {productType === 'finished_goods' ? 'product' : 'raw material'}</MenuItem>
+                  {(items as any[]).map((p: any) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.sku ? `${p.name} (${p.sku})` : p.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <FormControl size="small" sx={{ minWidth: 160 }} required>
+                  <InputLabel>Warehouse</InputLabel>
+                  <Select value={item.warehouse_id} label="Warehouse" onChange={(e) => updateLineItem(idx, 'warehouse_id', e.target.value as number)}>
+                    <MenuItem value={0} disabled>Select warehouse</MenuItem>
+                    {warehouses.map(w => <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+                <TextField label="Qty" type="number" size="small" sx={{ flex: 1, minWidth: 100 }}
+                  value={item.quantity} slotProps={{ htmlInput: { min: 0 } }}
+                  onChange={(e) => updateLineItem(idx, 'quantity', Number(e.target.value))} />
+                <TextField label="Unit Cost" type="number" size="small" sx={{ flex: 1, minWidth: 120 }}
+                  value={item.unit_cost} slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+                  onChange={(e) => updateLineItem(idx, 'unit_cost', e.target.value)} />
+                <IconButton color="error" onClick={() => removeLineItem(idx)}><DeleteIcon /></IconButton>
+              </Box>
+            ))}
+            <Button size="small" startIcon={<AddIcon />} onClick={addLineItem} sx={{ alignSelf: 'flex-start' }}>
+              Add {productType === 'finished_goods' ? 'Product' : 'Raw Material'}
+            </Button>
+            {lineItems.length > 0 && (
+              <Button variant="contained" onClick={handleSubmit} disabled={submitting} sx={{ alignSelf: 'flex-start' }}>
+                {submitting ? 'Saving...' : 'Save Opening Balances'}
+              </Button>
+            )}
           </Box>
-        ))}
-        <Button size="small" startIcon={<AddIcon />} onClick={addLineItem} sx={{ alignSelf: 'flex-start' }}>
-          Add Product
-        </Button>
-        {lineItems.length > 0 && (
-          <Button variant="contained" onClick={handleSubmit} disabled={submitting} sx={{ alignSelf: 'flex-start' }}>
-            {submitting ? 'Saving...' : 'Save Opening Balances'}
-          </Button>
-        )}
-      </Box>
+        </>
+      )}
 
       <Typography variant="h6" sx={{ mb: 2 }}>Recorded Opening Balances</Typography>
       <DataTable
-        columns={[
-          { id: 'product_name', label: 'Product' },
-          { id: 'product_sku', label: 'SKU' },
-          { id: 'warehouse_name', label: 'Warehouse' },
-          { id: 'quantity', label: 'Quantity' },
-          { id: 'unit_cost', label: 'Unit Cost', render: (row: any) => row.unit_cost ? Number(row.unit_cost).toFixed(2) : '-' },
-          { id: 'batch_number', label: 'Batch' },
-          { id: 'transaction_date', label: 'Date', render: (row: any) => row.transaction_date ? new Date(row.transaction_date).toLocaleDateString() : '-' },
-        ]}
+        columns={
+          productType === 'finished_goods'
+            ? [
+                { id: 'product_name', label: 'Product' },
+                { id: 'product_sku', label: 'SKU' },
+                { id: 'warehouse_name', label: 'Warehouse' },
+                { id: 'quantity', label: 'Quantity' },
+                { id: 'unit_cost', label: 'Unit Cost', render: (row: any) => row.unit_cost ? Number(row.unit_cost).toFixed(2) : '-' },
+                { id: 'transaction_date', label: 'Date', render: (row: any) => row.transaction_date ? new Date(row.transaction_date).toLocaleDateString() : '-' },
+              ]
+            : [
+                { id: 'raw_material_name', label: 'Raw Material' },
+                { id: 'raw_material_sku', label: 'SKU' },
+                { id: 'warehouse_name', label: 'Warehouse' },
+                { id: 'quantity', label: 'Quantity' },
+                { id: 'unit_cost', label: 'Unit Cost', render: (row: any) => row.unit_cost ? Number(row.unit_cost).toFixed(2) : '-' },
+                { id: 'transaction_date', label: 'Date', render: (row: any) => row.transaction_date ? new Date(row.transaction_date).toLocaleDateString() : '-' },
+              ]
+        }
         data={existing}
         loading={loadingExisting}
         total={total}

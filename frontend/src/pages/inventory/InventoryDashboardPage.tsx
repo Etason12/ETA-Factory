@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Paper, Typography, Grid2 as Grid, Chip, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, CircularProgress,
+  TableContainer, TableHead, TableRow, CircularProgress, useTheme,
 } from '@mui/material';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
+} from 'recharts';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
@@ -18,6 +22,8 @@ interface Summary {
   total_reserved_quantity: number;
   low_stock_count: number;
   recent_movements: any[];
+  warehouse_data: { name: string; value: number }[];
+  stock_status: { name: string; value: number }[];
 }
 
 export default function InventoryDashboardPage() {
@@ -66,6 +72,46 @@ export default function InventoryDashboardPage() {
           <Typography>{summary.low_stock_count} item(s) below minimum stock level. <Chip label="View Low Stock" size="small" color="warning" component="a" href="/inventory/low-stock" clickable sx={{ ml: 1 }} /></Typography>
         </Paper>
       )}
+
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 12, md: 8 }}>
+          <Paper sx={{ p: 3, borderRadius: 2, height: 400 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Stock Distribution by Warehouse</Typography>
+            <ResponsiveContainer width="100%" height="90%">
+              <BarChart data={summary.warehouse_data}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <RechartsTooltip />
+                <Bar dataKey="value" fill="#1976d2" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Paper sx={{ p: 3, borderRadius: 2, height: 400 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Stock Health</Typography>
+            <ResponsiveContainer width="100%" height="90%">
+              <PieChart>
+                <Pie
+                  data={summary.stock_status}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  <Cell fill="#388e3c" />
+                  <Cell fill="#d32f2f" />
+                </Pie>
+                <RechartsTooltip />
+                <Legend verticalAlign="bottom" height={36}/>
+              </PieChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+      </Grid>
 
       <Paper sx={{ borderRadius: 2 }}>
         <Typography variant="h6" sx={{ p: 2, pb: 1 }}>Recent Inventory Movements</Typography>

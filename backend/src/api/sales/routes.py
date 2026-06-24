@@ -1,13 +1,13 @@
 from datetime import datetime, date
-from flask import jsonify, request
+from flask import jsonify, request, Response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import random
 import os
 from models.models import (
     SalesQuotation, SalesQuotationItem, SalesOrder, SalesOrderItem,
-    Invoice, Payment, LoadingAuthorization, Customer, db
+    Invoice, Payment, LoadingAuthorization, Customer, Company, db
 )
-from utils.helpers import paginate, generate_unique_code
+from utils.helpers import paginate, generate_unique_code, escape_like
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
 from api.decorators import role_required, permission_required, branch_required, audit_log
 from . import sales_bp
@@ -121,6 +121,10 @@ def create_quotation():
         unit_price = item.get('unit_price', 0)
         if not product_id or not quantity:
             raise ValidationError('Each item requires product_id and quantity')
+        if float(quantity) <= 0:
+            raise ValidationError('Item quantity must be positive')
+        if float(unit_price) < 0:
+            raise ValidationError('Item unit_price cannot be negative')
         total_price = float(quantity) * float(unit_price)
         subtotal += total_price
         qi = SalesQuotationItem(
@@ -181,7 +185,7 @@ def get_quotation(id):
 
 @sales_bp.route('/quotations/<int:id>', methods=['PUT'])
 @jwt_required()
-@audit_log('update', 'Sales')
+@audit_log('update', 'Sales', entity_getter=lambda id, **kw: SalesQuotation.query.get(id))
 @permission_required('sales.create')
 def update_quotation(id):
     quotation = SalesQuotation.query.get(id)
@@ -245,6 +249,8 @@ def delete_quotation(id):
     quotation = SalesQuotation.query.get(id)
     if not quotation:
         raise NotFoundError('Quotation not found')
+    if quotation.status != 'Draft':
+        raise ValidationError(f'Cannot delete quotation with status: {quotation.status}')
 
     db.session.delete(quotation)
     try:
@@ -418,6 +424,10 @@ def create_order():
         unit_price = item.get('unit_price', 0)
         if not product_id or not quantity:
             raise ValidationError('Each item requires product_id and quantity')
+        if float(quantity) <= 0:
+            raise ValidationError('Item quantity must be positive')
+        if float(unit_price) < 0:
+            raise ValidationError('Item unit_price cannot be negative')
         total_price = float(quantity) * float(unit_price)
         subtotal += total_price
         oi = SalesOrderItem(
@@ -480,10 +490,80 @@ def get_order(id):
     }}), 200
 
 
+@sales_bp.route('/orders/<int:id>', methods=['PUT'])
+@jwt_required()
+@audit_log('update', 'Sales')
+@permission_required('sales.create')
+def update_order(id):
+    order = SalesOrder.query.get(id)
+    if not order:
+        raise NotFoundError('Order not found')
+    if order.status != 'Draft':
+        raise ValidationError(f'Cannot update order with status: {order.status}')
+
+    data = request.get_json()
+    if not data:
+        raise ValidationError('Request body is required')
+
+    if data.get('customer_id'):
+        order.customer_id = data['customer_id']
+    if data.get('branch_id'):
+        order.branch_id = data['branch_id']
+    if data.get('warehouse_id'):
+        order.warehouse_id = data['warehouse_id']
+    if data.get('order_date'):
+        try:
+            order.order_date = date.fromisoformat(data['order_date'])
+        except (ValueError, TypeError):
+            raise ValidationError('Invalid order_date format, expected YYYY-MM-DD')
+    if 'notes' in data:
+        order.notes = data.get('notes', '').strip()
+
+    if 'items' in data:
+        items_data = data['items']
+        if not items_data:
+            raise ValidationError('At least one item is required')
+
+        # Remove existing items
+        for item in order.items:
+            db.session.delete(item)
+        db.session.flush()
+
+        subtotal = 0
+        for item in items_data:
+            product_id = item.get('product_id')
+            quantity = item.get('quantity')
+            unit_price = item.get('unit_price', 0)
+            if not product_id or not quantity:
+                raise ValidationError('Each item requires product_id and quantity')
+            total_price = float(quantity) * float(unit_price)
+            subtotal += total_price
+            oi = SalesOrderItem(
+                sales_order_id=order.id,
+                product_id=product_id,
+                quantity=quantity,
+                unit_price=unit_price,
+                total_price=total_price,
+            )
+            db.session.add(oi)
+
+        order.subtotal = subtotal
+        order.tax_amount = data.get('tax_amount', order.tax_amount or 0)
+        order.total_amount = float(order.subtotal) + float(order.tax_amount)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return jsonify({'message': 'Order updated successfully', 'order_id': order.id}), 200
+
+
 @sales_bp.route('/orders/<int:id>/approve', methods=['PUT'])
 @jwt_required()
 @audit_log('approve', 'Sales')
-@role_required('Owner', 'General Manager', 'Sales Manager', 'Branch Manager')
+@permission_required('sales.approve')
 def approve_order(id):
     from services.inventory_service import InventoryService
 
@@ -535,7 +615,7 @@ def approve_order(id):
 @sales_bp.route('/orders/<int:id>/cancel', methods=['PUT'])
 @jwt_required()
 @audit_log('cancel', 'Sales')
-@role_required('Owner', 'General Manager', 'Sales Manager', 'Branch Manager')
+@permission_required('sales.approve')
 def cancel_order(id):
     from services.inventory_service import InventoryService
 
@@ -642,15 +722,31 @@ def create_invoice():
         due_date = date.fromisoformat(due_date_str) if due_date_str else None
     except (ValueError, TypeError):
         raise ValidationError('Invalid due_date format, expected YYYY-MM-DD')
-    subtotal = data.get('subtotal', 0)
-    tax_amount = data.get('tax_amount', 0)
-    total_amount = data.get('total_amount', 0)
+    subtotal = float(data.get('subtotal', 0))
+    tax_amount = float(data.get('tax_amount', 0))
+    total_amount = float(data.get('total_amount', 0))
     notes = data.get('notes', '').strip()
+
+    if subtotal < 0:
+        raise ValidationError('subtotal cannot be negative')
+    if tax_amount < 0:
+        raise ValidationError('tax_amount cannot be negative')
+    if total_amount < 0:
+        raise ValidationError('total_amount cannot be negative')
 
     if not invoice_number:
         invoice_number = generate_unique_code('INV')
     if not sales_order_id or not customer_id:
         raise ValidationError('sales_order_id and customer_id are required')
+
+    if Invoice.query.filter(Invoice.sales_order_id == sales_order_id).first():
+        raise ConflictError('An invoice already exists for this order')
+
+    order = SalesOrder.query.get(sales_order_id)
+    if not order:
+        raise NotFoundError('Sales order not found')
+    if order.status not in ('Approved', 'Loading Authorized', 'Goods Issued'):
+        raise ValidationError(f'Cannot invoice order with status: {order.status}. Order must be approved first.')
 
     if Invoice.query.filter(Invoice.invoice_number == invoice_number).first():
         raise ConflictError('Invoice number already exists')
@@ -729,10 +825,19 @@ def pay_invoice(id):
     if not amount or not payment_method:
         raise ValidationError('amount and payment_method are required')
 
-    if float(amount) <= 0:
+    try:
+        amount = float(amount)
+    except (ValueError, TypeError):
+        raise ValidationError('Invalid amount')
+
+    import math
+    if math.isnan(amount) or math.isinf(amount):
+        raise ValidationError('Invalid amount')
+
+    if amount <= 0:
         raise ValidationError('Amount must be positive')
 
-    if float(amount) > float(invoice.balance_due):
+    if amount > float(invoice.balance_due):
         raise ValidationError('Payment amount exceeds balance due')
 
     payment_number = f'PAY-{invoice.id}-{random.randint(1000, 9999)}'
@@ -819,12 +924,66 @@ def list_payments():
     }), 200
 
 
+def _build_receipt_response(id):
+    payment = Payment.query.get(id)
+    if not payment:
+        raise NotFoundError('Payment not found')
+
+    invoice = payment.invoice
+    if not invoice:
+        raise NotFoundError('Invoice not found')
+
+    sales_order = invoice.sales_order
+    if not sales_order:
+        raise NotFoundError('Sales order not found')
+
+    customer = payment.customer
+    if not customer:
+        raise NotFoundError('Customer not found')
+
+    items = sales_order.items.all() if sales_order.items else []
+
+    from services.receipt_service import generate_receipt
+    company = Company.query.filter_by(is_active=True).first()
+
+    pdf_buf = generate_receipt(payment, invoice, sales_order, customer, items, company)
+
+    filename = f'receipt_{payment.payment_number}.pdf'
+    return Response(
+        pdf_buf.getvalue(),
+        mimetype='application/pdf',
+        headers={
+            'Content-Disposition': f'inline; filename="{filename}"',
+        }
+    )
+
+
+@sales_bp.route('/payments/<int:id>/receipt', methods=['GET'])
+@jwt_required()
+@permission_required('payments.view')
+def get_payment_receipt(id):
+    return _build_receipt_response(id)
+
+
+@sales_bp.route('/payments/<int:id>/receipt-view', methods=['GET'])
+def view_payment_receipt(id):
+    from flask_jwt_extended import decode_token
+    token = request.args.get('token') or request.args.get('access_token')
+    if not token:
+        return jsonify({'error': 'Token required'}), 401
+    try:
+        decode_token(token)
+    except Exception:
+        return jsonify({'error': 'Invalid or expired token'}), 401
+    return _build_receipt_response(id)
+
+
 # ─── Loading Authorizations ──────────────────────────────
 
 @sales_bp.route('/loading-authorizations', methods=['POST'])
 @jwt_required()
 @audit_log('create', 'Sales')
-@role_required('Owner', 'General Manager', 'Sales Manager', 'Warehouse Manager')
+@permission_required('sales.create')
 def create_loading_authorization():
     data = request.get_json()
     if not data:
@@ -868,8 +1027,18 @@ def list_loading_authorizations():
     per_page = request.args.get('per_page', 20, type=int)
     sales_order_id = request.args.get('sales_order_id', type=int)
     status = request.args.get('status', '').strip()
+    search = request.args.get('search', '').strip()
 
     query = LoadingAuthorization.query
+
+    if search:
+        safe = escape_like(search)
+        query = query.filter(
+            db.or_(
+                LoadingAuthorization.authorization_number.ilike(f'%{safe}%'),
+                db.cast(LoadingAuthorization.sales_order_id, db.String).ilike(f'%{safe}%'),
+            )
+        )
 
     if sales_order_id:
         query = query.filter(LoadingAuthorization.sales_order_id == sales_order_id)
@@ -903,7 +1072,7 @@ def list_loading_authorizations():
 @sales_bp.route('/loading-authorizations/<int:id>/approve', methods=['PUT'])
 @jwt_required()
 @audit_log('approve', 'Sales')
-@role_required('Owner', 'General Manager', 'Sales Manager', 'Warehouse Manager')
+@permission_required('sales.approve')
 def approve_loading(id):
     la = LoadingAuthorization.query.get(id)
     if not la:
@@ -923,17 +1092,66 @@ def approve_loading(id):
     return jsonify({'message': 'Loading authorization approved successfully'}), 200
 
 
+@sales_bp.route('/revenue', methods=['GET'])
+@jwt_required()
+@permission_required('reports.view')
+def total_revenue():
+    from sqlalchemy import func
+    total = db.session.query(func.coalesce(func.sum(Invoice.paid_amount), 0)).scalar()
+    return jsonify({'total_revenue': float(total)}), 200
+
+
+@sales_bp.route('/revenue/trend', methods=['GET'])
+@jwt_required()
+@permission_required('reports.view')
+def revenue_trend():
+    from sqlalchemy import func, extract
+    rows = db.session.query(
+        extract('month', Invoice.invoice_date).label('month'),
+        func.coalesce(func.sum(Invoice.paid_amount), 0).label('revenue'),
+    ).filter(
+        extract('year', Invoice.invoice_date) == extract('year', func.now()),
+    ).group_by(
+        extract('month', Invoice.invoice_date)
+    ).order_by('month').all()
+
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    data = []
+    for m in range(1, 13):
+        val = 0
+        for row in rows:
+            if row.month == m:
+                val = float(row.revenue)
+                break
+        data.append({'name': months[m - 1], 'revenue': val})
+    return jsonify(data), 200
+
+
 @sales_bp.route('/upload-receipt', methods=['POST'])
 @jwt_required()
 def upload_receipt():
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
     if 'file' not in request.files:
         raise ValidationError('No file uploaded')
     f = request.files['file']
     if f.filename == '':
         raise ValidationError('No file selected')
+
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValidationError(f'File type not allowed. Allowed: {", ".join(sorted(ALLOWED_EXTENSIONS))}')
+
+    f.seek(0, os.SEEK_END)
+    file_size = f.tell()
+    f.seek(0)
+    if file_size > MAX_FILE_SIZE:
+        raise ValidationError(f'File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB')
+
     upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'uploads', 'receipts')
     os.makedirs(upload_dir, exist_ok=True)
-    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else 'jpg'
     filename = f'receipt_{datetime.now().strftime("%Y%m%d%H%M%S")}_{random.randint(1000,9999)}.{ext}'
     filepath = os.path.join(upload_dir, filename)
     f.save(filepath)

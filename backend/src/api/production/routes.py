@@ -3,7 +3,7 @@ from datetime import date
 from flask import jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.models import (
-    ProductionBatch, Product, Warehouse, db
+    ProductionBatch, Product, Warehouse, BOMItem, db
 )
 from utils.helpers import paginate, generate_unique_code
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
@@ -89,9 +89,20 @@ def create_batch():
         batch_number = generate_unique_code('PRD')
     if not product_id or not quantity_produced or not production_date or not warehouse_id:
         raise ValidationError('product_id, quantity_produced, production_date, and warehouse_id are required')
+    if float(quantity_produced) <= 0:
+        raise ValidationError('quantity_produced must be positive')
+    if float(production_cost) < 0:
+        raise ValidationError('production_cost cannot be negative')
 
     if ProductionBatch.query.filter(ProductionBatch.batch_number == batch_number).first():
         raise ConflictError('Batch number already exists')
+
+    product = Product.query.get(product_id)
+    if not product:
+        raise ValidationError('Product not found')
+    bom_count = BOMItem.query.filter_by(product_id=product_id).count()
+    if bom_count == 0:
+        raise ValidationError(f'Product {product.name} has no Bill of Materials (BOM). Please create a BOM first.')
 
     batch = ProductionBatch(
         batch_number=batch_number,
@@ -153,6 +164,25 @@ def approve_batch(id):
     return jsonify({'message': 'Batch approved successfully. Inventory updated and GRV created.'}), 200
 
 
+@production_bp.route('/check-requirements', methods=['GET'])
+@jwt_required()
+@permission_required('production.view')
+def check_requirements():
+    from services.production_service import ProductionService
+    
+    product_id = request.args.get('product_id', type=int)
+    quantity = request.args.get('quantity', type=float)
+    warehouse_id = request.args.get('warehouse_id', type=int)
+    
+    if not product_id or quantity is None or not warehouse_id:
+        raise ValidationError('product_id, quantity, and warehouse_id are required')
+        
+    service = ProductionService()
+    requirements = service.get_required_materials(product_id, quantity, warehouse_id)
+    
+    return jsonify({'requirements': requirements}), 200
+
+
 @production_bp.route('/batches/<int:id>/cancel', methods=['PUT'])
 @jwt_required()
 @audit_log('cancel', 'Production')
@@ -173,3 +203,24 @@ def cancel_batch(id):
         raise
 
     return jsonify({'message': 'Batch cancelled successfully'}), 200
+
+
+@production_bp.route('/batches/<int:id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('delete', 'Production')
+@permission_required('production.approve')
+def delete_batch(id):
+    batch = ProductionBatch.query.get(id)
+    if not batch:
+        raise NotFoundError('Production batch not found')
+
+    if batch.status not in ('Draft', 'Cancelled'):
+        raise ValidationError(f'Cannot delete batch with status: {batch.status}. Only Draft or Cancelled batches can be deleted.')
+
+    db.session.delete(batch)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({'message': 'Production batch deleted successfully'}), 200

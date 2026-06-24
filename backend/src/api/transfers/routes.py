@@ -173,7 +173,7 @@ def get_transfer(id):
 @transfers_bp.route('/<int:id>/approve', methods=['PUT'])
 @jwt_required()
 @audit_log('approve', 'Transfer')
-@role_required('Owner', 'General Manager', 'Warehouse Manager')
+@permission_required('transfers.approve')
 def approve_transfer(id):
     transfer = Transfer.query.get(id)
     if not transfer:
@@ -197,7 +197,7 @@ def approve_transfer(id):
 @transfers_bp.route('/<int:id>/issue', methods=['PUT'])
 @jwt_required()
 @audit_log('issue', 'Transfer')
-@role_required('Owner', 'General Manager', 'Warehouse Manager', 'Store Keeper')
+@permission_required('transfers.approve')
 def issue_transfer(id):
     from services.inventory_service import InventoryService
 
@@ -234,7 +234,7 @@ def issue_transfer(id):
         db.session.add(giv_item)
 
     try:
-        InventoryService().process_goods_issue(giv.id, user_id)
+        InventoryService().process_goods_issue(giv.id, user_id, commit=False)
         transfer.giv_id = giv.id
         transfer.status = 'In Transit'
         db.session.commit()
@@ -248,7 +248,7 @@ def issue_transfer(id):
 @transfers_bp.route('/<int:id>/receive', methods=['PUT'])
 @jwt_required()
 @audit_log('receive', 'Transfer')
-@role_required('Owner', 'General Manager', 'Warehouse Manager', 'Store Keeper')
+@permission_required('transfers.approve')
 def receive_transfer(id):
     from services.inventory_service import InventoryService
 
@@ -286,7 +286,7 @@ def receive_transfer(id):
         db.session.add(grv_item)
 
     try:
-        InventoryService().process_goods_receipt(grv.id, user_id)
+        InventoryService().process_goods_receipt(grv.id, user_id, commit=False)
         transfer.grv_id = grv.id
         transfer.status = 'Received'
         transfer.received_by_id = user_id
@@ -302,14 +302,35 @@ def receive_transfer(id):
 @transfers_bp.route('/<int:id>/cancel', methods=['PUT'])
 @jwt_required()
 @audit_log('cancel', 'Transfer')
-@role_required('Owner', 'General Manager', 'Warehouse Manager')
+@permission_required('transfers.approve')
 def cancel_transfer(id):
+    from services.inventory_service import InventoryService
+
     transfer = Transfer.query.get(id)
     if not transfer:
         raise NotFoundError('Transfer not found')
 
     if transfer.status in ('Received', 'Cancelled'):
         raise ValidationError(f'Cannot cancel transfer with status: {transfer.status}')
+
+    user_id = int(get_jwt_identity())
+
+    # Reverse stock if goods were issued
+    if transfer.status == 'In Transit' and transfer.giv_id:
+        inv_svc = InventoryService()
+        giv = GoodsIssueVoucher.query.get(transfer.giv_id)
+        if giv and giv.status == 'Issued':
+            for item in giv.items:
+                inv_svc.add_stock(
+                    product_id=item.product_id,
+                    warehouse_id=transfer.source_warehouse_id,
+                    quantity=float(item.quantity),
+                    reference_type='TransferReversal',
+                    reference_id=transfer.id,
+                    created_by_id=user_id,
+                )
+            giv.status = 'Cancelled'
+            db.session.flush()
 
     transfer.status = 'Cancelled'
     try:
@@ -319,3 +340,20 @@ def cancel_transfer(id):
         raise
 
     return jsonify({'message': 'Transfer cancelled successfully'}), 200
+
+
+@transfers_bp.route('/<int:id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('delete', 'Transfer')
+@permission_required('transfers.delete')
+def delete_transfer(id):
+    transfer = Transfer.query.get(id)
+    if not transfer:
+        raise NotFoundError('Transfer not found')
+    db.session.delete(transfer)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({'message': 'Transfer deleted successfully'}), 200

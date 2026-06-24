@@ -71,9 +71,29 @@ export interface Product {
   category_name?: string;
   unit_id: number;
   unit_name?: string;
+  unit_abbreviation?: string;
   is_active: boolean;
   min_stock_level?: number;
   max_stock_level?: number;
+  costing_method?: string;
+  bom_labor_cost?: number;
+  bom_utility_cost?: number;
+}
+
+export interface RawMaterial {
+  id: number;
+  sku: string;
+  name: string;
+  description?: string;
+  cost_price: number;
+  unit_id: number;
+  unit_name?: string;
+  unit_abbreviation?: string;
+  is_active: boolean;
+  min_stock_level?: number;
+  max_stock_level?: number;
+  stock_quantity?: number;
+  created_at?: string;
 }
 
 export interface Customer {
@@ -323,6 +343,7 @@ export interface LoadingAuthorization {
   authorization_number: string;
   sales_order_id: number;
   warehouse_id: number;
+  warehouse_name?: string;
   authorized_date: string;
   status: string;
   notes?: string;
@@ -337,6 +358,8 @@ export interface AuditLog {
   description?: string;
   entity_type?: string;
   entity_id?: number;
+  old_values?: Record<string, unknown> | null;
+  new_values?: Record<string, unknown> | null;
   branch_id?: number;
   ip_address?: string;
   timestamp: string;
@@ -376,6 +399,95 @@ export interface Company {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface Supplier {
+  id: number;
+  code: string;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  payment_terms?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  order_number: string;
+  supplier_id: number;
+  supplier_name?: string;
+  order_date: string;
+  expected_date?: string;
+  status: string;
+  notes?: string;
+  created_by_name?: string;
+  approved_by_name?: string;
+  items: PurchaseOrderItem[];
+}
+
+export interface PurchaseOrderItem {
+  id: number;
+  raw_material_id: number;
+  raw_material_name?: string;
+  raw_material_sku?: string;
+  quantity_ordered: number;
+  unit_cost: number;
+  quantity_received: number;
+}
+
+export interface RawMaterialInventoryEntry {
+  id: number;
+  raw_material_id: number;
+  raw_material_name?: string;
+  raw_material_sku?: string;
+  warehouse_id: number;
+  warehouse_name?: string;
+  quantity_on_hand: number;
+  reserved_quantity: number;
+  available_quantity: number;
+  unit_name?: string;
+}
+
+export interface RawMaterialLedgerEntry {
+  id: number;
+  raw_material_id: number;
+  raw_material_name?: string;
+  warehouse_id: number;
+  warehouse_name?: string;
+  movement_type: string;
+  quantity: number;
+  unit_cost?: number;
+  reference_type?: string;
+  reference_id?: number;
+  transaction_date: string;
+}
+
+export interface StoreRequisition {
+  id: number;
+  requisition_number: string;
+  warehouse_id: number;
+  warehouse_name?: string;
+  production_batch_id?: number;
+  production_batch_number?: string;
+  requisition_date: string;
+  status: string;
+  notes?: string;
+  created_by_name?: string;
+  approved_by_name?: string;
+  issued_by_name?: string;
+  items: StoreRequisitionItem[];
+}
+
+export interface StoreRequisitionItem {
+  id: number;
+  raw_material_id: number;
+  raw_material_name?: string;
+  raw_material_sku?: string;
+  quantity_requested: number;
+  quantity_issued: number;
 }
 
 export interface DashboardMetrics {

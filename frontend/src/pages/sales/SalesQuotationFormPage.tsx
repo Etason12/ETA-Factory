@@ -9,7 +9,7 @@ import { Delete } from '@mui/icons-material';
 import { salesApi, customersApi, productsApi, branchesApi } from '../../api/endpoints';
 import type { Customer, Product, Branch } from '../../types';
 import PageHeader from '../../components/common/PageHeader';
-import { formatCurrency, getCurrencyCode } from '../../utils/format';
+import { formatCurrency, getCurrencyCode, todayStr } from '../../utils/format';
 
 interface LineItem {
   product_id: number;
@@ -33,7 +33,7 @@ export default function SalesQuotationFormPage() {
   const [quotationNumber, setQuotationNumber] = useState('');
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [branchId, setBranchId] = useState<number | null>(null);
-  const [validUntil, setValidUntil] = useState('');
+  const [validUntil, setValidUntil] = useState(todayStr);
   const [notes, setNotes] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([{ product_id: 0, product_name: '', quantity: 1, unit_price: 0 }]);
   
@@ -56,7 +56,7 @@ export default function SalesQuotationFormPage() {
         setQuotationNumber(res.quotation_number);
         setCustomerId(res.customer_id);
         setBranchId(res.branch_id);
-        setValidUntil(res.valid_until ? res.valid_until.split('T')[0] : '');
+        setValidUntil(res.valid_until ? res.valid_until.split('T')[0] : todayStr);
         setNotes(res.notes || '');
         if (res.items && res.items.length > 0) {
           setLineItems(res.items.map((i: any) => ({

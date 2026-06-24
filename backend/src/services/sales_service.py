@@ -18,14 +18,68 @@ from services.inventory_service import InventoryService
 from utils.error_handlers import NotFoundError, ValidationError
 
 
+from sqlalchemy.orm import joinedload
+# ... (imports)
+
 class SalesQuotationRepository(BaseRepository[SalesQuotation]):
     def __init__(self) -> None:
         super().__init__(SalesQuotation)
 
+    def get_all(
+        self,
+        page: int = 1,
+        per_page: int = 20,
+        filters: Optional[dict[str, Any]] = None,
+        sort: Optional[str] = None,
+        order: str = 'asc',
+    ) -> dict[str, Any]:
+        query = self.model_class.query.options(joinedload(SalesQuotation.customer))
+        if hasattr(self.model_class, 'is_deleted'):
+            query = query.filter(self.model_class.is_deleted == False)
+        if filters:
+            for key, value in filters.items():
+                if hasattr(self.model_class, key) and value is not None:
+                    column = getattr(self.model_class, key)
+                    if isinstance(value, (list, tuple)):
+                        query = query.filter(column.in_(value))
+                    else:
+                        query = query.filter(column == value)
+        if sort and hasattr(self.model_class, sort):
+            column = getattr(self.model_class, sort)
+            query = query.order_by(desc(column) if order == 'desc' else asc(column))
+        return paginate_helper(query, page, per_page)
 
 class SalesOrderRepository(BaseRepository[SalesOrder]):
     def __init__(self) -> None:
         super().__init__(SalesOrder)
+
+    def get_all(
+        self,
+        page: int = 1,
+        per_page: int = 20,
+        filters: Optional[dict[str, Any]] = None,
+        sort: Optional[str] = None,
+        order: str = 'asc',
+    ) -> dict[str, Any]:
+        query = self.model_class.query.options(
+            joinedload(SalesOrder.customer), 
+            joinedload(SalesOrder.warehouse)
+        )
+        if hasattr(self.model_class, 'is_deleted'):
+            query = query.filter(self.model_class.is_deleted == False)
+        if filters:
+            for key, value in filters.items():
+                if hasattr(self.model_class, key) and value is not None:
+                    column = getattr(self.model_class, key)
+                    if isinstance(value, (list, tuple)):
+                        query = query.filter(column.in_(value))
+                    else:
+                        query = query.filter(column == value)
+        if sort and hasattr(self.model_class, sort):
+            column = getattr(self.model_class, sort)
+            query = query.order_by(desc(column) if order == 'desc' else asc(column))
+        return paginate_helper(query, page, per_page)
+
 
 
 class InvoiceRepository(BaseRepository[Invoice]):
@@ -71,6 +125,8 @@ class SalesService:
         items: list[dict[str, Any]],
         valid_until: Optional[date] = None,
         notes: Optional[str] = None,
+        tax_amount: Optional[float] = None,
+        created_by_id: Optional[int] = None,
     ) -> SalesQuotation:
         customer = Customer.query.get(customer_id)
         if not customer:
@@ -105,8 +161,15 @@ class SalesService:
                 'total_price': float(total_price),
             })
 
-        tax_amount = subtotal * Decimal('0.16')
-        total_amount = subtotal + tax_amount
+        # Dynamic tax: Use provided tax_amount or Company default
+        if tax_amount is not None:
+            final_tax = Decimal(str(tax_amount))
+        else:
+            company = Company.query.filter_by(is_active=True).first()
+            tax_rate = Decimal(str(company.default_tax_rate)) if company else Decimal('0')
+            final_tax = subtotal * tax_rate
+
+        total_amount = subtotal + final_tax
 
         quotation = SalesQuotation(
             quotation_number=quotation_number,
@@ -115,9 +178,10 @@ class SalesService:
             status='Draft',
             valid_until=valid_until,
             subtotal=float(subtotal),
-            tax_amount=float(tax_amount),
+            tax_amount=float(final_tax),
             total_amount=float(total_amount),
             notes=notes,
+            created_by_id=created_by_id,
         )
         quotation = self.quotation_repo.create(quotation)
 
@@ -206,7 +270,7 @@ class SalesService:
 
         return self.order_repo.get_by_id(order.id)
 
-    def create_order_direct(
+    def create_order(
         self,
         customer_id: int,
         branch_id: int,
@@ -214,6 +278,8 @@ class SalesService:
         items: list[dict[str, Any]],
         order_date: Optional[date] = None,
         notes: Optional[str] = None,
+        tax_amount: Optional[float] = None,
+        created_by_id: Optional[int] = None,
     ) -> SalesOrder:
         customer = Customer.query.get(customer_id)
         if not customer:
@@ -232,6 +298,8 @@ class SalesService:
         order_items = []
         for item_data in items:
             product_id = item_data['product_id']
+            # We no longer pre-calculate cost_price here, it will be determined at fulfillment
+            
             quantity = Decimal(str(item_data['quantity']))
             unit_price = Decimal(str(item_data.get('unit_price', 0)))
             total_price = quantity * unit_price
@@ -242,10 +310,18 @@ class SalesService:
                 'quantity': float(quantity),
                 'unit_price': float(unit_price),
                 'total_price': float(total_price),
+                'cost_price': 0.0  # Placeholder, will be updated at fulfillment
             })
 
-        tax_amount = subtotal * Decimal('0.16')
-        total_amount = subtotal + tax_amount
+        # Dynamic tax
+        if tax_amount is not None:
+            final_tax = Decimal(str(tax_amount))
+        else:
+            company = Company.query.filter_by(is_active=True).first()
+            tax_rate = Decimal(str(company.default_tax_rate)) if company else Decimal('0')
+            final_tax = subtotal * tax_rate
+
+        total_amount = subtotal + final_tax
 
         order = SalesOrder(
             order_number=order_number,
@@ -255,9 +331,10 @@ class SalesService:
             order_date=today,
             status='Draft',
             subtotal=float(subtotal),
-            tax_amount=float(tax_amount),
+            tax_amount=float(final_tax),
             total_amount=float(total_amount),
             notes=notes,
+            created_by_id=created_by_id,
         )
         order = self.order_repo.create(order)
 
@@ -270,6 +347,7 @@ class SalesService:
                 quantity=i['quantity'],
                 unit_price=i['unit_price'],
                 total_price=i['total_price'],
+                cost_price=i['cost_price']
             )
             db.session.add(item)
         db.session.commit()

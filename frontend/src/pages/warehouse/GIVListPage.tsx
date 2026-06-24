@@ -16,6 +16,7 @@ import StatusChip from '../../components/common/StatusChip';
 import { warehousesApi, productsApi, salesApi } from '../../api/endpoints';
 import { blurActiveElement } from '../../utils/focus';
 import { useAuthStore } from '../../store/authStore';
+import { todayStr, monthAgoStr } from '../../utils/format';
 import type { GoodsIssueVoucher, GIVItem, Warehouse, Product } from '../../types';
 
 interface LineItem {
@@ -37,8 +38,8 @@ export default function GIVListPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailGIV, setDetailGIV] = useState<GoodsIssueVoucher | null>(null);
@@ -53,7 +54,7 @@ export default function GIVListPage() {
       setStock(stockMap);
   };
   const [form, setForm] = useState({
-    warehouse_id: 0, voucher_date: new Date().toISOString().split('T')[0],
+    warehouse_id: 0, voucher_date: todayStr,
     reference_type: '', notes: '',
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -72,6 +73,16 @@ export default function GIVListPage() {
     }
   }, [page, perPage, dateFrom, dateTo]);
 
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this GIV?')) return;
+    try {
+      await warehousesApi.deleteGiv(id);
+      fetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to delete');
+    }
+  };
+
   useEffect(() => { fetch(); }, [fetch]);
 
   useEffect(() => {
@@ -80,7 +91,7 @@ export default function GIVListPage() {
         salesApi.orders.get(prefilledOrderId).then((order) => {
             setForm({...form, warehouse_id: order.warehouse_id});
             fetchStock(order.warehouse_id);
-            setLineItems(order.items.map((i: any) => ({ product_id: i.product_id, product_name: i.product_name || '', quantity: i.quantity, batch_number: '' })));
+            setLineItems(order.items.map((i: any, idx: number) => ({ product_id: i.product_id, product_name: i.product_name || '', quantity: i.quantity, batch_number: `BTCH-${Date.now()}-${idx}` })));
         });
       }
       Promise.all([
@@ -104,7 +115,7 @@ export default function GIVListPage() {
   };
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { product_id: 0, product_name: '', quantity: 1, batch_number: '' }]);
+    setLineItems([...lineItems, { product_id: 0, product_name: '', quantity: 1, batch_number: `BTCH-${Date.now()}-${lineItems.length}` }]);
   };
 
   const removeLineItem = (idx: number) => {
@@ -137,7 +148,7 @@ export default function GIVListPage() {
       });
       blurActiveElement();
       setFormOpen(false);
-      setForm({ warehouse_id: 0, voucher_date: new Date().toISOString().split('T')[0], reference_type: '', notes: '' });
+      setForm({ warehouse_id: 0, voucher_date: todayStr, reference_type: '', notes: '' });
       setLineItems([]);
       fetch();
     } catch (err: any) {
@@ -182,6 +193,13 @@ export default function GIVListPage() {
             <Tooltip title="Approve GIV">
               <IconButton size="small" color="success" onClick={() => setApproveTarget(row)}>
                 <CheckCircleIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.status === 'Draft' && (
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}

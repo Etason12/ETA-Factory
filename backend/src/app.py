@@ -1,7 +1,6 @@
 import os
 import sys
 from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 
@@ -14,14 +13,37 @@ from models.models import db
 from utils.error_handlers import register_error_handlers
 
 
+class CORSMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        if environ.get('REQUEST_METHOD') == 'OPTIONS':
+            start_response(
+                '200 OK',
+                [
+                    ('Access-Control-Allow-Origin', '*'),
+                    ('Access-Control-Allow-Headers', 'Content-Type,Authorization'),
+                    ('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS'),
+                    ('Content-Length', '0'),
+                ]
+            )
+            return [b'']
+        def cors_start_response(status, headers, exc_info=None):
+            headers.append(('Access-Control-Allow-Origin', '*'))
+            headers.append(('Access-Control-Allow-Headers', 'Content-Type,Authorization'))
+            headers.append(('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS'))
+            return start_response(status, headers, exc_info)
+        return self.app(environ, cors_start_response)
+
+
 def create_app(config_name: str = None) -> Flask:
     if config_name is None:
         config_name = os.getenv('FLASK_ENV', 'development')
 
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
-
-    CORS(app, resources={r'/api/v1/.*': {'origins': '*'}})
+    app.wsgi_app = CORSMiddleware(app.wsgi_app)
 
     uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads')
     os.makedirs(os.path.join(uploads_dir, 'receipts'), exist_ok=True)
@@ -30,8 +52,6 @@ def create_app(config_name: str = None) -> Flask:
     @app.route('/uploads/<path:filename>')
     def serve_upload(filename):
         return send_from_directory(uploads_dir, filename)
-
-    CORS(app, resources={r'/uploads/.*': {'origins': '*'}})
 
     db.init_app(app)
     Migrate(app, db)
@@ -78,6 +98,10 @@ def _register_blueprints(app: Flask) -> None:
     from api.audit.routes import audit_bp
     from api.company.routes import company_bp
     from api.roles.routes import roles_bp
+    from api.raw_materials.routes import raw_materials_bp
+    from api.suppliers.routes import suppliers_bp
+    from api.purchasing.routes import purchasing_bp
+    from api.store.routes import store_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(users_bp, url_prefix='/api/v1/users')
@@ -93,7 +117,10 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(audit_bp, url_prefix='/api/v1/audit')
     app.register_blueprint(company_bp, url_prefix='/api/v1/company')
     app.register_blueprint(roles_bp, url_prefix='/api/v1/roles')
-
+    app.register_blueprint(raw_materials_bp, url_prefix='/api/v1/raw-materials')
+    app.register_blueprint(suppliers_bp, url_prefix='/api/v1/suppliers')
+    app.register_blueprint(purchasing_bp, url_prefix='/api/v1/purchasing')
+    app.register_blueprint(store_bp, url_prefix='/api/v1/store')
 
 app = create_app()
 

@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, IconButton, TextField, Tooltip } from '@mui/material';
+import {
+  Box, Card, CardContent, Typography, Avatar, IconButton, TextField, Tooltip, Grid2 as Grid, Skeleton,
+} from '@mui/material';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CategoryIcon from '@mui/icons-material/Category';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import StatusChip from '../../components/common/StatusChip';
@@ -11,6 +17,28 @@ import { productsApi } from '../../api/endpoints';
 import { useAuthStore } from '../../store/authStore';
 import type { Product } from '../../types';
 import { formatCurrency } from '../../utils/format';
+
+function SummaryCard({ icon, label, value, color, loading }: {
+  icon: React.ReactNode; label: string; value: string | number; color: string; loading?: boolean;
+}) {
+  return (
+    <Card>
+      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, '&:last-child': { pb: 2 } }}>
+        <Avatar sx={{ bgcolor: `${color}.main`, width: 44, height: 44 }}>{icon}</Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {loading ? (
+            <><Skeleton width={60} height={28} /><Skeleton width={90} height={18} /></>
+          ) : (
+            <>
+              <Typography variant="h5" fontWeight={600}>{value}</Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>{label}</Typography>
+            </>
+          )}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function ProductsPage() {
   const navigate = useNavigate();
@@ -24,15 +52,35 @@ export default function ProductsPage() {
   const [perPage, setPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [summary, setSummary] = useState({ active: 0, categories: 0, total_value: 0 });
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
       const params: Record<string, unknown> = { page, per_page: perPage };
       if (search.trim()) params.search = search.trim();
-      const res = await productsApi.list(params);
+      const [res, allRes] = await Promise.all([
+        productsApi.list(params),
+        page === 1 && !search ? null : productsApi.list({ per_page: 10000 }).catch(() => null),
+      ]);
       setData(res.items);
       setTotal(res.total);
+      const fullData = page === 1 && !search ? res : allRes;
+      if (fullData) {
+        const items = fullData.items || [];
+        setSummary({
+          active: items.filter((p: Product) => p.is_active).length,
+          categories: new Set(items.map((p: Product) => p.category_name).filter(Boolean)).size,
+          total_value: items.reduce((s: number, p: Product) => s + Number(p.unit_price || 0), 0),
+        });
+      } else if (page === 1 && !search) {
+        const items = res.items || [];
+        setSummary({
+          active: items.filter((p: Product) => p.is_active).length,
+          categories: new Set(items.map((p: Product) => p.category_name).filter(Boolean)).size,
+          total_value: items.reduce((s: number, p: Product) => s + Number(p.unit_price || 0), 0),
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -73,6 +121,15 @@ export default function ProductsPage() {
       render: (row: Product) => (row.max_stock_level && row.max_stock_level > 0 ? row.max_stock_level : '-'),
     },
     {
+      id: 'costing_method', label: 'Costing',
+      render: (row: Product) => {
+        const labels: Record<string, string> = {
+          standard: 'Standard', weighted_average: 'Avg Cost', fifo: 'FIFO',
+        };
+        return labels[row.costing_method || 'standard'] || '-';
+      },
+    },
+    {
       id: 'is_active',
       label: 'Status',
       render: (row: Product) => <StatusChip status={row.is_active ? 'Active' : 'Inactive'} />,
@@ -102,6 +159,11 @@ export default function ProductsPage() {
               </IconButton>
             </Tooltip>
           )}
+          <Tooltip title="BOM">
+            <IconButton size="small" onClick={() => navigate(`/products/${row.id}/bom`)}>
+              <AccountTreeIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       ),
     },
@@ -114,6 +176,17 @@ export default function ProductsPage() {
         subtitle="Manage your product catalog"
         action={canCreate ? { label: 'New Product', path: '/products/new' } : undefined}
       />
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <SummaryCard icon={<InventoryIcon />} label="Total Products" value={total} color="primary" loading={loading} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <SummaryCard icon={<CheckCircleIcon />} label="Active Products" value={summary.active} color="success" loading={loading} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <SummaryCard icon={<CategoryIcon />} label="Categories" value={summary.categories} color="info" loading={loading} />
+        </Grid>
+      </Grid>
       <TextField
         size="small"
         placeholder="Search by name or SKU..."

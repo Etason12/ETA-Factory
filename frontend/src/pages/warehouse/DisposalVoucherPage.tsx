@@ -15,13 +15,13 @@ import StatusChip from '../../components/common/StatusChip';
 import { warehousesApi, productsApi } from '../../api/endpoints';
 import { blurActiveElement } from '../../utils/focus';
 import { useAuthStore } from '../../store/authStore';
+import { todayStr, monthAgoStr } from '../../utils/format';
 import type { DisposalVoucher, DisposalVoucherItem, Warehouse, Product } from '../../types';
 
 interface LineItem {
   product_id: number;
   product_name: string;
   quantity: number;
-  batch_number: string;
   reason: string;
 }
 
@@ -45,8 +45,8 @@ export default function DisposalVoucherPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [loading, setLoading] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailDV, setDetailDV] = useState<DisposalVoucher | null>(null);
@@ -67,7 +67,7 @@ export default function DisposalVoucherPage() {
 
   const [form, setForm] = useState({
     warehouse_id: 0,
-    voucher_date: new Date().toISOString().split('T')[0],
+    voucher_date: todayStr,
     reason: '',
     notes: '',
   });
@@ -86,6 +86,16 @@ export default function DisposalVoucherPage() {
       setLoading(false);
     }
   }, [page, perPage, dateFrom, dateTo]);
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm('Delete this disposal voucher?')) return;
+    try {
+      await warehousesApi.deleteDisposal(id);
+      fetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err?.message || 'Failed to delete');
+    }
+  };
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -112,7 +122,7 @@ export default function DisposalVoucherPage() {
   };
 
   const addLineItem = () => {
-    setLineItems([...lineItems, { product_id: 0, product_name: '', quantity: 1, batch_number: '', reason: '' }]);
+    setLineItems([...lineItems, { product_id: 0, product_name: '', quantity: 1, reason: '' }]);
   };
 
   const removeLineItem = (idx: number) => {
@@ -143,13 +153,12 @@ export default function DisposalVoucherPage() {
         items: lineItems.map((l) => ({
           product_id: l.product_id,
           quantity: l.quantity,
-          batch_number: l.batch_number || undefined,
           reason: l.reason || undefined,
         })),
       });
       blurActiveElement();
       setFormOpen(false);
-      setForm({ warehouse_id: 0, voucher_date: new Date().toISOString().split('T')[0], reason: '', notes: '' });
+      setForm({ warehouse_id: 0, voucher_date: todayStr, reason: '', notes: '' });
       setLineItems([]);
       fetch();
     } catch (err: any) {
@@ -195,6 +204,13 @@ export default function DisposalVoucherPage() {
             <Tooltip title="Approve Disposal">
               <IconButton size="small" color="success" onClick={() => setApproveTarget(row)}>
                 <CheckCircleIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {row.status === 'Draft' && (
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => handleDelete(row.id)}>
+                <DeleteIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}
@@ -281,9 +297,6 @@ export default function DisposalVoucherPage() {
                       helperText={item.product_id > 0 && item.quantity > (stock[item.product_id] || 0) ? `Max: ${stock[item.product_id] || 0}` : ''}
                       onChange={(e) => updateLineItem(idx, 'quantity', Number(e.target.value))}
                       slotProps={{ htmlInput: { min: 1 } }} />
-                    <TextField label="Batch #" size="small" sx={{ flex: 1, minWidth: 120 }}
-                      value={item.batch_number}
-                      onChange={(e) => updateLineItem(idx, 'batch_number', e.target.value)} />
                     <TextField select label="Item Reason" size="small" sx={{ flex: 1, minWidth: 140 }}
                       value={item.reason}
                       onChange={(e) => updateLineItem(idx, 'reason', e.target.value)}>
@@ -346,19 +359,17 @@ export default function DisposalVoucherPage() {
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
                 <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Product</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }} align="right">Qty</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Batch #</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
-                  </TableRow>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Product</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="right">Qty</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
+                    </TableRow>
                 </TableHead>
                 <TableBody>
                   {detailDV.items.map((item: DisposalVoucherItem) => (
                     <TableRow key={item.id} hover>
                       <TableCell>{item.product_name}</TableCell>
                       <TableCell align="right">{item.quantity}</TableCell>
-                      <TableCell>{item.batch_number || '-'}</TableCell>
                       <TableCell>{item.reason || detailDV.reason}</TableCell>
                     </TableRow>
                   ))}

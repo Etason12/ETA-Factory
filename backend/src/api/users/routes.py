@@ -2,15 +2,15 @@ from flask import jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import bcrypt
 from models.models import User, Role, Permission, db
-from utils.helpers import paginate
+from utils.helpers import paginate, escape_like
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
-from api.decorators import role_required, permission_required, get_current_user, audit_log
+from api.decorators import permission_required, audit_log
 from . import users_bp
 
 
 @users_bp.route('', methods=['GET'])
 @jwt_required()
-@role_required('Owner', 'General Manager')
+@permission_required('users.view')
 def list_users():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
@@ -22,12 +22,13 @@ def list_users():
     query = User.query.filter(User.is_deleted == False)
 
     if search:
+        safe = escape_like(search)
         query = query.filter(
             db.or_(
-                User.username.ilike(f'%{search}%'),
-                User.email.ilike(f'%{search}%'),
-                User.full_name.ilike(f'%{search}%'),
-                User.phone.ilike(f'%{search}%'),
+                User.username.ilike(f'%{safe}%'),
+                User.email.ilike(f'%{safe}%'),
+                User.full_name.ilike(f'%{safe}%'),
+                User.phone.ilike(f'%{safe}%'),
             )
         )
     if role_id:
@@ -173,8 +174,25 @@ def delete_user(id):
     if not user:
         raise NotFoundError('User not found')
 
+    current_user_id = int(get_jwt_identity())
+    if user.id == current_user_id:
+        raise ValidationError('Cannot delete your own account')
+
+    if user.role and user.role.name == 'Owner':
+        from models.models import Role
+        owner_role = Role.query.filter_by(name='Owner').first()
+        if owner_role:
+            active_owners = User.query.filter(
+                User.role_id == owner_role.id,
+                User.is_active == True,
+                User.is_deleted == False,
+                User.id != user.id,
+            ).count()
+            if active_owners == 0:
+                raise ValidationError('Cannot delete the last Owner account')
+
     user.soft_delete()
-    user.updated_by_id = int(get_jwt_identity())
+    user.updated_by_id = current_user_id
     try:
         db.session.commit()
     except Exception:

@@ -8,6 +8,7 @@ from models.models import (
 )
 from utils.helpers import paginate, generate_unique_code
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
+from services.inventory_service import calculate_unit_cost
 from api.decorators import role_required, permission_required, branch_required, audit_log
 from . import warehouses_bp
 
@@ -159,6 +160,11 @@ def delete_warehouse(id):
     if not warehouse:
         raise NotFoundError('Warehouse not found')
 
+    if Inventory.query.filter_by(warehouse_id=id).first():
+        raise ValidationError('Cannot delete warehouse with existing inventory records')
+    if InventoryLedger.query.filter_by(warehouse_id=id).first():
+        raise ValidationError('Cannot delete warehouse with existing ledger entries')
+
     warehouse.soft_delete()
     warehouse.updated_by_id = int(get_jwt_identity())
     try:
@@ -211,7 +217,7 @@ def get_warehouse_inventory(id):
 @warehouses_bp.route('/grv', methods=['POST'])
 @jwt_required()
 @audit_log('create', 'Warehouse')
-@role_required('Owner', 'General Manager', 'Warehouse Manager', 'Store Keeper')
+@permission_required('inventory.adjust')
 def create_grv():
     data = request.get_json()
     if not data:
@@ -367,11 +373,12 @@ def approve_grv(id):
     db.session.flush()
 
     for item in voucher.items:
-        inv = Inventory.query.filter_by(
-            product_id=item.product_id,
-            warehouse_id=voucher.warehouse_id,
-            batch_number=item.batch_number or '',
-        ).first()
+        batch = item.batch_number if item.batch_number else None
+        inv = Inventory.query.filter(
+            Inventory.product_id == item.product_id,
+            Inventory.warehouse_id == voucher.warehouse_id,
+            Inventory.batch_number == batch,
+        ).with_for_update().first()
         if inv:
             inv.quantity_on_hand = float(inv.quantity_on_hand or 0) + float(item.quantity)
         else:
@@ -379,9 +386,10 @@ def approve_grv(id):
                 product_id=item.product_id,
                 warehouse_id=voucher.warehouse_id,
                 quantity_on_hand=item.quantity,
-                batch_number=item.batch_number or '',
+                batch_number=batch,
             )
             db.session.add(inv)
+            db.session.flush()
         db.session.flush()
 
         ledger = InventoryLedger(
@@ -392,7 +400,7 @@ def approve_grv(id):
             unit_cost=item.unit_cost,
             reference_type=voucher.reference_type or 'GRV',
             reference_id=voucher.id,
-            batch_number=item.batch_number or '',
+            batch_number=batch,
         )
         db.session.add(ledger)
 
@@ -407,7 +415,7 @@ def approve_grv(id):
 @warehouses_bp.route('/giv', methods=['POST'])
 @jwt_required()
 @audit_log('create', 'Warehouse')
-@role_required('Owner', 'General Manager', 'Warehouse Manager', 'Store Keeper')
+@permission_required('inventory.adjust')
 def create_giv():
     data = request.get_json()
     if not data:
@@ -565,16 +573,19 @@ def approve_giv(id):
     db.session.flush()
 
     for item in voucher.items:
-        inv = Inventory.query.filter_by(
-            product_id=item.product_id,
-            warehouse_id=voucher.warehouse_id,
-            batch_number=item.batch_number or '',
-        ).first()
-        if not inv and not item.batch_number:
-            inv = Inventory.query.filter_by(
-                product_id=item.product_id,
-                warehouse_id=voucher.warehouse_id,
-            ).filter(Inventory.batch_number != '').first()
+        batch = item.batch_number if item.batch_number else None
+        inv = Inventory.query.filter(
+            Inventory.product_id == item.product_id,
+            Inventory.warehouse_id == voucher.warehouse_id,
+            Inventory.batch_number == batch,
+        ).with_for_update().first()
+        if not inv and batch is None:
+            # Fallback: find any non-null-batch inventory for this product/warehouse
+            inv = Inventory.query.filter(
+                Inventory.product_id == item.product_id,
+                Inventory.warehouse_id == voucher.warehouse_id,
+                Inventory.batch_number.isnot(None),
+            ).with_for_update().first()
         if not inv:
             raise ValidationError(f'Insufficient stock for product {item.product_id}')
         current_qty = float(inv.quantity_on_hand or 0)
@@ -584,11 +595,13 @@ def approve_giv(id):
         inv.quantity_on_hand = current_qty - issue_qty
         db.session.flush()
 
+        unit_cost = calculate_unit_cost(item.product, voucher.warehouse_id) if item.product else None
         ledger = InventoryLedger(
             product_id=item.product_id,
             warehouse_id=voucher.warehouse_id,
             movement_type='GIV',
             quantity=-item.quantity,
+            unit_cost=unit_cost,
             reference_type=voucher.reference_type or 'GIV',
             reference_id=voucher.id,
             batch_number=inv.batch_number,
@@ -709,10 +722,50 @@ def list_adjustments():
     }), 200
 
 
+@warehouses_bp.route('/adjustments/<int:id>/approve', methods=['PUT'])
+@jwt_required()
+@audit_log('approve', 'Warehouse')
+@permission_required('inventory.adjust')
+def approve_adjustment(id):
+    adjustment = StockAdjustment.query.get(id)
+    if not adjustment:
+        raise NotFoundError('Adjustment not found')
+    if adjustment.status != 'Draft':
+        raise ValidationError(f'Adjustment cannot be approved with status: {adjustment.status}')
+
+    from services.inventory_service import InventoryService
+    inv_svc = InventoryService()
+    user_id = int(get_jwt_identity())
+
+    try:
+        for item in adjustment.items:
+            diff = float(item.adjusted_quantity) - float(item.current_quantity)
+            if diff == 0:
+                continue
+            adjustment_type = 'Addition' if diff > 0 else 'Reduction'
+            inv_svc.adjust_stock(
+                product_id=item.product_id,
+                warehouse_id=adjustment.warehouse_id,
+                adjustment_type=adjustment_type,
+                quantity=abs(diff),
+                reason=adjustment.notes or f'Adjustment {adjustment.adjustment_number}',
+                batch_number=item.batch_number if item.batch_number else None,
+                created_by_id=user_id,
+            )
+
+        adjustment.status = 'Approved'
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return jsonify({'message': 'Adjustment approved and applied to inventory'}), 200
+
+
 @warehouses_bp.route('/returns', methods=['POST'])
 @jwt_required()
 @audit_log('create', 'Warehouse')
-@role_required('Owner', 'General Manager', 'Warehouse Manager', 'Store Keeper')
+@permission_required('inventory.adjust')
 def create_return():
     data = request.get_json()
     if not data:
@@ -912,8 +965,8 @@ def list_disposal():
             'reason': dv.reason,
             'notes': dv.notes,
             'status': dv.status,
-            'created_by_name': dv.creator.name if dv.creator else None,
-            'disposed_by_name': dv.disposer.name if dv.disposer else None,
+            'created_by_name': dv.creator.full_name if dv.creator else None,
+            'disposed_by_name': dv.disposer.full_name if dv.disposer else None,
             'created_at': dv.created_at.isoformat() if dv.created_at else None,
         })
 
@@ -956,8 +1009,8 @@ def get_disposal(id):
             'reason': dv.reason,
             'notes': dv.notes,
             'status': dv.status,
-            'created_by_name': dv.creator.name if dv.creator else None,
-            'disposed_by_name': dv.disposer.name if dv.disposer else None,
+            'created_by_name': dv.creator.full_name if dv.creator else None,
+            'disposed_by_name': dv.disposer.full_name if dv.disposer else None,
             'items': items_list,
         }
     }), 200
@@ -982,13 +1035,11 @@ def approve_disposal(id):
         inv = Inventory.query.filter_by(
             product_id=item.product_id,
             warehouse_id=voucher.warehouse_id,
-            batch_number=item.batch_number or '',
-        ).first()
-        if not inv and not item.batch_number:
-            inv = Inventory.query.filter_by(
-                product_id=item.product_id,
-                warehouse_id=voucher.warehouse_id,
-            ).filter(Inventory.batch_number != '').first()
+        )
+        if item.batch_number:
+            inv = inv.filter(Inventory.batch_number == item.batch_number).first()
+        else:
+            inv = inv.first()
         if not inv:
             raise ValidationError(f'Insufficient stock for product {item.product_id}')
         current_qty = float(inv.quantity_on_hand or 0)
@@ -998,11 +1049,13 @@ def approve_disposal(id):
         inv.quantity_on_hand = current_qty - issue_qty
         db.session.flush()
 
+        unit_cost = calculate_unit_cost(item.product, voucher.warehouse_id) if item.product else None
         ledger = InventoryLedger(
             product_id=item.product_id,
             warehouse_id=voucher.warehouse_id,
             movement_type='Disposal',
             quantity=-item.quantity,
+            unit_cost=unit_cost,
             reference_type='Disposal',
             reference_id=voucher.id,
             batch_number=inv.batch_number,
@@ -1015,3 +1068,105 @@ def approve_disposal(id):
         db.session.rollback()
         raise
     return jsonify({'message': 'Disposal voucher approved successfully'}), 200
+
+
+@warehouses_bp.route('/disposal/<int:id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('delete', 'Disposal')
+@permission_required('inventory.edit')
+def delete_disposal(id):
+    voucher = DisposalVoucher.query.get(id)
+    if not voucher:
+        raise NotFoundError('Disposal voucher not found')
+    db.session.delete(voucher)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({'message': 'Disposal voucher deleted successfully'}), 200
+
+
+@warehouses_bp.route('/grv/<int:id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('delete', 'GRV')
+@permission_required('inventory.edit')
+def delete_grv(id):
+    from services.inventory_service import InventoryService
+
+    voucher = GoodsReceiveVoucher.query.get(id)
+    if not voucher:
+        raise NotFoundError('GRV not found')
+
+    # Reverse stock if GRV was completed
+    if voucher.status == 'Completed':
+        inv_svc = InventoryService()
+        user_id = int(get_jwt_identity())
+        for item in voucher.items:
+            inv_svc.deduct_stock(
+                product_id=item.product_id,
+                warehouse_id=voucher.warehouse_id,
+                quantity=float(item.quantity),
+                reference_type='GRVDeletion',
+                reference_id=voucher.id,
+                created_by_id=user_id,
+            )
+
+    db.session.delete(voucher)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({'message': 'GRV deleted successfully'}), 200
+
+
+@warehouses_bp.route('/giv/<int:id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('delete', 'GIV')
+@permission_required('inventory.edit')
+def delete_giv(id):
+    from services.inventory_service import InventoryService
+
+    voucher = GoodsIssueVoucher.query.get(id)
+    if not voucher:
+        raise NotFoundError('GIV not found')
+
+    # Reverse stock if GIV was completed
+    if voucher.status == 'Completed':
+        inv_svc = InventoryService()
+        user_id = int(get_jwt_identity())
+        for item in voucher.items:
+            inv_svc.add_stock(
+                product_id=item.product_id,
+                warehouse_id=voucher.warehouse_id,
+                quantity=float(item.quantity),
+                reference_type='GIVDeletion',
+                reference_id=voucher.id,
+                created_by_id=user_id,
+            )
+
+    db.session.delete(voucher)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({'message': 'GIV deleted successfully'}), 200
+
+
+@warehouses_bp.route('/adjustments/<int:id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('delete', 'StockAdjustment')
+@permission_required('inventory.edit')
+def delete_adjustment(id):
+    adjustment = StockAdjustment.query.get(id)
+    if not adjustment:
+        raise NotFoundError('Stock adjustment not found')
+    db.session.delete(adjustment)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return jsonify({'message': 'Stock adjustment deleted successfully'}), 200

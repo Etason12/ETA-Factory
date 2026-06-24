@@ -109,6 +109,8 @@ class TransferService:
         transfer_id: int,
         approved_by_id: int,
     ) -> Transfer:
+        from models.models import db
+
         transfer = self.get_transfer(transfer_id)
 
         if transfer.status != 'Draft':
@@ -117,13 +119,17 @@ class TransferService:
         transfer.status = 'Approved'
         transfer.approved_by_id = approved_by_id
         transfer.approved_at = datetime.utcnow()
-        return self.repo.update(transfer)
+        self.repo.update(transfer)
+        db.session.commit()
+        return transfer
 
     def issue_goods(
         self,
         transfer_id: int,
         issued_by_id: Optional[int] = None,
     ) -> Transfer:
+        from models.models import db
+
         transfer = self.get_transfer(transfer_id)
 
         if transfer.status not in ('Approved',):
@@ -162,13 +168,17 @@ class TransferService:
 
         transfer.status = 'Issued'
         transfer.giv_id = giv.id
-        return self.repo.update(transfer)
+        self.repo.update(transfer)
+        db.session.commit()
+        return transfer
 
     def receive_goods(
         self,
         transfer_id: int,
         received_by_id: Optional[int] = None,
     ) -> Transfer:
+        from models.models import db
+
         transfer = self.get_transfer(transfer_id)
 
         if transfer.status != 'Issued':
@@ -210,4 +220,6 @@ class TransferService:
         transfer.grv_id = grv.id
         transfer.received_by_id = received_by_id
         transfer.received_at = datetime.utcnow()
-        return self.repo.update(transfer)
+        self.repo.update(transfer)
+        db.session.commit()
+        return transfer

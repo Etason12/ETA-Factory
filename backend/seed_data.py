@@ -74,6 +74,10 @@ def seed():
             ('customers.delete', 'Delete customers', 'Customers'),
             ('payments.create', 'Create payments', 'Payments'),
             ('payments.view', 'View payments', 'Payments'),
+            ('transfers.delete', 'Delete transfers', 'Transfers'),
+            ('company.edit', 'Edit company settings', 'Company'),
+            ('company.backup', 'Backup/restore database', 'Company'),
+            ('company.reset', 'Reset database', 'Company'),
         ]
 
         permissions = {}
@@ -89,21 +93,23 @@ def seed():
         gm_role = roles['General Manager']
         for perm_name in ['users.view', 'users.create', 'users.edit',
                            'branches.view', 'branches.create', 'branches.edit', 'branches.delete',
-                          'products.view', 'products.create', 'products.edit', 'products.delete',
-                           'inventory.view', 'inventory.adjust', 'inventory.edit',
-                            'warehouses.view', 'warehouses.create', 'warehouses.edit', 'warehouses.delete',
-                           'sales.view', 'sales.create', 'sales.approve',
-                          'production.view', 'production.create', 'production.approve',
-                          'transfers.view', 'transfers.create', 'transfers.approve',
-                          'reports.view', 'audit.view',
-                          'customers.view', 'customers.create', 'customers.edit', 'customers.delete',
-                          'payments.create', 'payments.view']:
+                           'products.view', 'products.create', 'products.edit', 'products.delete',
+                            'inventory.view', 'inventory.adjust', 'inventory.edit',
+                             'warehouses.view', 'warehouses.create', 'warehouses.edit', 'warehouses.delete',
+                            'sales.view', 'sales.create', 'sales.approve',
+                           'production.view', 'production.create', 'production.approve',
+                           'transfers.view', 'transfers.create', 'transfers.approve', 'transfers.delete',
+                           'reports.view', 'audit.view',
+                           'customers.view', 'customers.create', 'customers.edit', 'customers.delete',
+                           'payments.create', 'payments.view',
+                           'company.edit']:
             gm_role.permissions.append(permissions[perm_name])
 
         bm_role = roles['Branch Manager']
         for perm_name in ['branches.view', 'products.view', 'inventory.view',
                           'warehouses.view', 'sales.view', 'sales.create',
-                          'production.view', 'transfers.view', 'reports.view',
+                          'production.view', 'production.create',
+                          'transfers.view', 'reports.view',
                           'customers.view', 'customers.create', 'customers.edit',
                           'payments.view']:
             bm_role.permissions.append(permissions[perm_name])
@@ -125,24 +131,26 @@ def seed():
         wm_role = roles['Warehouse Manager']
         for perm_name in ['products.view', 'inventory.view', 'inventory.adjust', 'inventory.edit',
                            'warehouses.view', 'warehouses.create', 'warehouses.edit', 'warehouses.delete',
-                           'transfers.view', 'transfers.create', 'transfers.approve',
+                           'transfers.view', 'transfers.create', 'transfers.approve', 'transfers.delete',
                            'reports.view']:
             wm_role.permissions.append(permissions[perm_name])
 
         sk_role = roles['Store Keeper']
         for perm_name in ['products.view', 'inventory.view', 'inventory.adjust',
                           'warehouses.view',
+                          'production.view', 'production.create',
                           'transfers.view', 'transfers.create']:
             sk_role.permissions.append(permissions[perm_name])
 
         pm_role = roles['Production Manager']
-        for perm_name in ['products.view', 'inventory.view',
+        for perm_name in ['products.view', 'products.edit', 'inventory.view',
+                          'warehouses.view',
                           'production.view', 'production.create', 'production.approve',
                           'reports.view']:
             pm_role.permissions.append(permissions[perm_name])
 
         acc_role = roles['Accountant']
-        for perm_name in ['customers.view', 'sales.view',
+        for perm_name in ['products.view', 'customers.view', 'sales.view',
                           'payments.create', 'payments.view',
                           'reports.view', 'inventory.view']:
             acc_role.permissions.append(permissions[perm_name])

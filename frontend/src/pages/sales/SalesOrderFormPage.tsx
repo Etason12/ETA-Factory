@@ -9,7 +9,7 @@ import { Add, Delete } from '@mui/icons-material';
 import { salesApi, customersApi, productsApi, warehousesApi, branchesApi, inventoryApi } from '../../api/endpoints';
 import type { Customer, Product, Warehouse, Branch } from '../../types';
 import PageHeader from '../../components/common/PageHeader';
-import { formatCurrency, getCurrencyCode } from '../../utils/format';
+import { formatCurrency, getCurrencyCode, todayStr } from '../../utils/format';
 
 interface LineItem {
   product_id: number;
@@ -40,7 +40,7 @@ export default function SalesOrderFormPage() {
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [branchId, setBranchId] = useState<number | null>(null);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(todayStr);
   const [orderNumber, setOrderNumber] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([{ product_id: 0, product_name: '', quantity: 1, unit_price: 0 }]);
   const [submitting, setSubmitting] = useState(false);
@@ -67,7 +67,7 @@ export default function SalesOrderFormPage() {
         setCustomerId(order.customer_id);
         setBranchId(order.branch_id);
         setWarehouseId(order.warehouse_id);
-        setOrderDate(order.order_date ? order.order_date.split('T')[0] : new Date().toISOString().slice(0, 10));
+        setOrderDate(order.order_date ? order.order_date.split('T')[0] : todayStr);
         setReadOnly(isReadOnly(order.status));
         if (order.items && order.items.length > 0) {
           setLineItems(order.items.map((i: any) => ({
@@ -167,7 +167,8 @@ export default function SalesOrderFormPage() {
       total_amount: subtotal,
     };
     try {
-      if (isEdit) {
+      if (isEdit && id) {
+        await salesApi.orders.update(Number(id), payload);
         navigate('/sales/orders');
       } else {
         await salesApi.orders.create(payload);

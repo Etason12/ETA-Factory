@@ -13,7 +13,7 @@ import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import StatusChip from '../../components/common/StatusChip';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr, monthAgoStr } from '../../utils/format';
 
 export default function SalesQuotationsPage() {
   const navigate = useNavigate();
@@ -28,8 +28,8 @@ export default function SalesQuotationsPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [convertId, setConvertId] = useState<number | null>(null);
   const [success, setSuccess] = useState('');

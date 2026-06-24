@@ -16,6 +16,7 @@ import StoreIcon from '@mui/icons-material/Store';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import SettingsIcon from '@mui/icons-material/Settings';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import GroupIcon from '@mui/icons-material/Group';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -62,6 +63,7 @@ const navigation: NavGroup[] = [
       { label: 'Sales Quotations', path: '/sales/quotations', icon: <ReceiptIcon /> },
       { label: 'Sales Orders', path: '/sales/orders', icon: <ShoppingCartIcon /> },
       { label: 'Invoices', path: '/sales/invoices', icon: <ReceiptLongIcon /> },
+      { label: 'Loading Authorizations', path: '/sales/loading-authorizations', icon: <FactCheckIcon /> },
       { label: 'Payments', path: '/sales/payments', icon: <FactCheckIcon /> },
     ]
   },
@@ -69,25 +71,25 @@ const navigation: NavGroup[] = [
     group: 'Inventory',
     items: [
       { label: 'Dashboard', path: '/inventory/dashboard', icon: <AssessmentIcon /> },
-      {
-        label: 'Products', path: '/products', icon: <InventoryIcon />,
-        children: [
-          { label: 'Products', path: '/products', icon: <InventoryIcon /> },
-          { label: 'Categories', path: '/settings/categories', icon: <InventoryIcon /> },
-          { label: 'Units', path: '/settings/units', icon: <InventoryIcon /> },
-        ]
-      },
+        {
+          label: 'Products', path: '/products', icon: <InventoryIcon />,
+          children: [
+            { label: 'Products', path: '/products', icon: <InventoryIcon /> },
+            { label: 'Categories', path: '/settings/categories', icon: <InventoryIcon /> },
+            { label: 'Units', path: '/settings/units', icon: <InventoryIcon /> },
+          ]
+        },
       { label: 'Stock Levels', path: '/inventory', icon: <InventoryIcon /> },
       { label: 'Low Stock Alerts', path: '/inventory/low-stock', icon: <WarningAmberIcon /> },
       { label: 'Inventory Ledger', path: '/inventory/ledger', icon: <FactCheckIcon /> },
       { label: 'Bin Card', path: '/inventory/bin-card', icon: <ReceiptIcon /> },
       { label: 'Opening Balances', path: '/inventory/opening-balances', icon: <WarehouseIcon /> },
-      { label: 'Transfers', path: '/transfers', icon: <AccountTreeIcon /> },
       {
         label: 'Warehouses', path: '/warehouses', icon: <WarehouseIcon />,
         children: [
           { label: 'GRV', path: '/warehouses/grv', icon: <StoreIcon /> },
           { label: 'GIV', path: '/warehouses/giv', icon: <LocalShippingIcon /> },
+          { label: 'Transfers', path: '/transfers', icon: <AccountTreeIcon /> },
           { label: 'Disposal', path: '/warehouses/disposal', icon: <DeleteIcon /> },
           { label: 'Adjustments', path: '/warehouses/adjustments', icon: <InventoryIcon /> },
           { label: 'Stocktake', path: '/warehouses/stocktake', icon: <FactCheckIcon /> },
@@ -96,9 +98,19 @@ const navigation: NavGroup[] = [
     ]
   },
   {
+    group: 'Purchasing',
+    items: [
+      { label: 'Suppliers', path: '/suppliers', icon: <PeopleIcon /> },
+      { label: 'Purchase Orders', path: '/purchasing/orders', icon: <ReceiptLongIcon /> },
+    ]
+  },
+  {
     group: 'Manufacturing',
     items: [
       { label: 'Production', path: '/production/batches', icon: <PrecisionManufacturingIcon /> },
+      { label: 'Raw Materials', path: '/raw-materials', icon: <InventoryIcon /> },
+      { label: 'Store Requisitions', path: '/store/requisitions', icon: <LocalShippingIcon /> },
+      { label: 'Raw Material Stock', path: '/store/stock', icon: <WarehouseIcon /> },
     ]
   },
   {
@@ -106,6 +118,7 @@ const navigation: NavGroup[] = [
     items: [
       { label: 'Users', path: '/users', icon: <GroupIcon />, roles: ['Owner', 'General Manager'] },
       { label: 'Branches', path: '/branches', icon: <AccountTreeIcon />, roles: ['Owner', 'General Manager'] },
+      { label: 'Roles', path: '/roles', icon: <AdminPanelSettingsIcon />, roles: ['Owner', 'General Manager'] },
       { label: 'Settings', path: '/settings', icon: <SettingsIcon />, roles: ['Owner'] },
     ]
   }
@@ -148,11 +161,20 @@ export default function MainLayout() {
             initialItems[item.path] = true;
             activeGroup = group.group;
           }
-        } else if (location.pathname.startsWith(item.path)) {
-          activeGroup = group.group;
         }
       });
     });
+    
+    // Only match non-children items if no child matched
+    if (!activeGroup) {
+      navigation.forEach(group => {
+        group.items.forEach(item => {
+          if (!item.children && location.pathname.startsWith(item.path)) {
+            activeGroup = group.group;
+          }
+        });
+      });
+    }
     
     if (activeGroup) initialGroups[activeGroup] = true;
     return { initialGroups, initialItems };
@@ -170,11 +192,20 @@ export default function MainLayout() {
         if (item.children && item.children.some(c => location.pathname.startsWith(c.path))) {
           activeItems[item.path] = true;
           activeGroup = group.group;
-        } else if (!item.children && location.pathname.startsWith(item.path)) {
-          activeGroup = group.group;
         }
       });
     });
+
+    // Only match non-children items if no child matched
+    if (!activeGroup) {
+      navigation.forEach(group => {
+        group.items.forEach(item => {
+          if (!item.children && location.pathname.startsWith(item.path)) {
+            activeGroup = group.group;
+          }
+        });
+      });
+    }
 
     if (activeGroup) setOpenGroups({ [activeGroup]: true });
     if (Object.keys(activeItems).length) setOpenItems(prev => ({ ...prev, ...activeItems }));

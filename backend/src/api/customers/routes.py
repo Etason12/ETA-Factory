@@ -1,9 +1,9 @@
 from flask import jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.models import Customer, SalesOrder, Invoice, Payment, db
-from utils.helpers import paginate, generate_unique_code
+from utils.helpers import paginate, generate_unique_code, escape_like
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
-from api.decorators import role_required, permission_required, branch_required, audit_log
+from api.decorators import permission_required, branch_required, audit_log
 from . import customers_bp
 
 
@@ -22,13 +22,14 @@ def list_customers():
     query = Customer.query.filter(Customer.is_deleted == False)
 
     if search:
+        safe = escape_like(search)
         query = query.filter(
             db.or_(
-                Customer.name.ilike(f'%{search}%'),
-                Customer.customer_code.ilike(f'%{search}%'),
-                Customer.phone.ilike(f'%{search}%'),
-                Customer.email.ilike(f'%{search}%'),
-                Customer.tin_number.ilike(f'%{search}%'),
+                Customer.name.ilike(f'%{safe}%'),
+                Customer.customer_code.ilike(f'%{safe}%'),
+                Customer.phone.ilike(f'%{safe}%'),
+                Customer.email.ilike(f'%{safe}%'),
+                Customer.tin_number.ilike(f'%{safe}%'),
             )
         )
     if customer_type:
@@ -132,7 +133,7 @@ def get_customer(id):
 
 @customers_bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()
-@audit_log('update', 'Customer')
+@audit_log('update', 'Customer', entity_getter=lambda id, **kw: Customer.query.get(id))
 @permission_required('customers.edit')
 def update_customer(id):
     customer = Customer.query.filter(Customer.id == id, Customer.is_deleted == False).first()
@@ -186,6 +187,13 @@ def delete_customer(id):
     customer = Customer.query.filter(Customer.id == id, Customer.is_deleted == False).first()
     if not customer:
         raise NotFoundError('Customer not found')
+
+    if SalesOrder.query.filter_by(customer_id=id).first():
+        raise ValidationError('Cannot delete customer with existing sales orders')
+    if Invoice.query.filter_by(customer_id=id).first():
+        raise ValidationError('Cannot delete customer with existing invoices')
+    if Payment.query.filter_by(customer_id=id).first():
+        raise ValidationError('Cannot delete customer with existing payments')
 
     customer.soft_delete()
     customer.updated_by_id = int(get_jwt_identity())

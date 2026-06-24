@@ -14,7 +14,7 @@ import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import StatusChip from '../../components/common/StatusChip';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr, monthAgoStr } from '../../utils/format';
 
 const paymentMethods = ['Cash', 'Bank Transfer', 'Check', 'Mobile Money'];
 
@@ -29,11 +29,11 @@ export default function InvoicesPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(monthAgoStr);
+  const [dateTo, setDateTo] = useState(todayStr);
   const [payDialog, setPayDialog] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState(0);
-  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [payDate, setPayDate] = useState(todayStr);
   const [payMethod, setPayMethod] = useState('Cash');
   const [payRef, setPayRef] = useState('');
   const [payBankName, setPayBankName] = useState('');
@@ -44,6 +44,7 @@ export default function InvoicesPage() {
   const [uploading, setUploading] = useState(false);
   const [success, setSuccess] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [lastPaymentId, setLastPaymentId] = useState<number | null>(null);
 
   const isBankTransfer = payMethod === 'Bank Transfer';
 
@@ -71,7 +72,7 @@ export default function InvoicesPage() {
   const openPayDialog = (inv: Invoice) => {
     setPayDialog(inv);
     setPayAmount(inv.balance_due);
-    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayDate(todayStr);
     setPayMethod('Cash');
     setPayRef('');
     setPayBankName('');
@@ -119,7 +120,7 @@ export default function InvoicesPage() {
       if (payReceipt) {
         receiptImage = await uploadReceipt() || '';
       }
-      await salesApi.invoices.pay(payDialog.id, {
+      const payRes = await salesApi.invoices.pay(payDialog.id, {
         amount: payAmount,
         payment_date: payDate,
         payment_method: payMethod,
@@ -128,6 +129,7 @@ export default function InvoicesPage() {
         receipt_image: receiptImage || undefined,
         notes: payNotes || undefined,
       });
+      setLastPaymentId(payRes.payment_id);
       setSuccess('Payment recorded successfully');
       blurActiveElement();
       setPayDialog(null);
@@ -333,8 +335,25 @@ export default function InvoicesPage() {
           </Button>
         </DialogActions>
       </Dialog>
-      <Snackbar open={!!success} autoHideDuration={4000} onClose={() => setSuccess('')}>
-        <Alert severity="success" onClose={() => setSuccess('')}>{success}</Alert>
+      <Snackbar open={!!success} autoHideDuration={6000} onClose={() => setSuccess('')}>
+        <Alert
+          severity="success"
+          onClose={() => setSuccess('')}
+          action={lastPaymentId ? (
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                const token = localStorage.getItem('access_token');
+                window.open(`/api/v1/sales/payments/${lastPaymentId}/receipt-view?token=${token}`, '_blank');
+              }}
+            >
+              Print Receipt
+            </Button>
+          ) : undefined}
+        >
+          {success}
+        </Alert>
       </Snackbar>
       <Snackbar open={!!errorMsg} autoHideDuration={6000} onClose={() => setErrorMsg('')}>
         <Alert severity="error" onClose={() => setErrorMsg('')}>{errorMsg}</Alert>

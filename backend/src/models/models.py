@@ -154,9 +154,29 @@ class Product(db.Model, TimestampMixin, SoftDeleteMixin):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     min_stock_level = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     max_stock_level = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    costing_method = db.Column(db.String(30), default='standard', nullable=False)
+    bom_labor_cost = db.Column(db.Numeric(12, 2), default=0)
+    bom_utility_cost = db.Column(db.Numeric(12, 2), default=0)
 
     inventory = db.relationship('Inventory', backref='product', lazy='dynamic')
     production_batches = db.relationship('ProductionBatch', backref='product', lazy='dynamic')
+
+
+class RawMaterial(db.Model, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = 'raw_materials'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    cost_price = db.Column(db.Numeric(12, 2), default=0)
+    unit_id = db.Column(db.Integer, db.ForeignKey('units.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    min_stock_level = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    max_stock_level = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    stock_quantity = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+
+    unit = db.relationship('Unit', backref='raw_materials', lazy='select')
 
 
 class Customer(db.Model, TimestampMixin, SoftDeleteMixin):
@@ -306,6 +326,7 @@ class SalesOrderItem(db.Model):
     unit_price = db.Column(db.Numeric(12, 2), nullable=False)
     total_price = db.Column(db.Numeric(12, 2), nullable=False)
     delivered_quantity = db.Column(db.Numeric(12, 2), default=0)
+    cost_price = db.Column(db.Numeric(12, 2), default=0)
 
     product = db.relationship('Product')
 
@@ -542,13 +563,25 @@ class ReturnVoucherItem(db.Model):
     reason = db.Column(db.Text)
 
 
-class Company(db.Model, TimestampMixin):
+class BOMItem(db.Model, TimestampMixin):
+    __tablename__ = 'bom_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    raw_material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    quantity = db.Column(db.Numeric(12, 2), nullable=False)
+
+    product = db.relationship('Product', foreign_keys=[product_id], backref=db.backref('bom_items', lazy='dynamic'))
+    raw_material = db.relationship('RawMaterial', foreign_keys=[raw_material_id])
+
+class Company(db.Model, TimestampMixin, SoftDeleteMixin):
     __tablename__ = 'companies'
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     legal_name = db.Column(db.String(200))
     tax_id = db.Column(db.String(50))
+    default_tax_rate = db.Column(db.Numeric(5, 2), default=0, nullable=False)
     logo_url = db.Column(db.String(500))
     address = db.Column(db.Text)
     phone = db.Column(db.String(20))
@@ -575,6 +608,125 @@ class Company(db.Model, TimestampMixin):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class Supplier(db.Model, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = 'suppliers'
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    contact_person = db.Column(db.String(200))
+    phone = db.Column(db.String(20))
+    email = db.Column(db.String(120))
+    address = db.Column(db.Text)
+    payment_terms = db.Column(db.String(100))
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    purchase_orders = db.relationship('PurchaseOrder', backref='supplier', lazy='dynamic')
+
+
+class PurchaseOrder(db.Model, TimestampMixin):
+    __tablename__ = 'purchase_orders'
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
+    order_date = db.Column(db.Date, default=date.today, nullable=False)
+    expected_date = db.Column(db.Date)
+    status = db.Column(db.String(30), default='Draft')
+    notes = db.Column(db.Text)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+
+    items = db.relationship('PurchaseOrderItem', backref='purchase_order', lazy='dynamic', cascade='all, delete-orphan')
+    creator = db.relationship('User', foreign_keys='PurchaseOrder.created_by_id', lazy='joined')
+    approver = db.relationship('User', foreign_keys='PurchaseOrder.approved_by_id', lazy='joined')
+
+
+class PurchaseOrderItem(db.Model):
+    __tablename__ = 'purchase_order_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False)
+    raw_material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    quantity_ordered = db.Column(db.Numeric(12, 2), nullable=False)
+    unit_cost = db.Column(db.Numeric(12, 2), nullable=False)
+    quantity_received = db.Column(db.Numeric(12, 2), default=0)
+
+    raw_material = db.relationship('RawMaterial', lazy='joined')
+
+
+class RawMaterialInventory(db.Model, TimestampMixin):
+    __tablename__ = 'raw_material_inventory'
+
+    id = db.Column(db.Integer, primary_key=True)
+    raw_material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouses.id'), nullable=False)
+    quantity_on_hand = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    reserved_quantity = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+
+    __table_args__ = (db.UniqueConstraint('raw_material_id', 'warehouse_id', name='uix_rm_inventory'),)
+
+    raw_material = db.relationship('RawMaterial', lazy='joined')
+    warehouse = db.relationship('Warehouse', lazy='joined')
+
+    @property
+    def available_quantity(self):
+        return float(self.quantity_on_hand or 0) - float(self.reserved_quantity or 0)
+
+
+class RawMaterialLedger(db.Model):
+    __tablename__ = 'raw_material_ledger'
+
+    id = db.Column(db.Integer, primary_key=True)
+    raw_material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouses.id'), nullable=False)
+    movement_type = db.Column(db.String(50), nullable=False)
+    quantity = db.Column(db.Numeric(12, 2), nullable=False)
+    unit_cost = db.Column(db.Numeric(12, 2))
+    reference_type = db.Column(db.String(50))
+    reference_id = db.Column(db.Integer)
+    transaction_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    raw_material = db.relationship('RawMaterial', lazy='joined')
+    warehouse = db.relationship('Warehouse', lazy='joined')
+
+
+class StoreRequisition(db.Model, TimestampMixin):
+    __tablename__ = 'store_requisitions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    requisition_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouses.id'), nullable=False)
+    production_batch_id = db.Column(db.Integer, db.ForeignKey('production_batches.id'), nullable=True)
+    requisition_date = db.Column(db.Date, default=date.today, nullable=False)
+    status = db.Column(db.String(30), default='Pending')
+    notes = db.Column(db.Text)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    issued_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    issued_at = db.Column(db.DateTime, nullable=True)
+
+    items = db.relationship('StoreRequisitionItem', backref='requisition', lazy='dynamic', cascade='all, delete-orphan')
+    warehouse = db.relationship('Warehouse', lazy='joined')
+    production_batch = db.relationship('ProductionBatch', lazy='joined')
+    creator = db.relationship('User', foreign_keys='StoreRequisition.created_by_id', lazy='joined')
+    approver = db.relationship('User', foreign_keys='StoreRequisition.approved_by_id', lazy='joined')
+    issuer = db.relationship('User', foreign_keys='StoreRequisition.issued_by_id', lazy='joined')
+
+
+class StoreRequisitionItem(db.Model):
+    __tablename__ = 'store_requisition_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    store_requisition_id = db.Column(db.Integer, db.ForeignKey('store_requisitions.id'), nullable=False)
+    raw_material_id = db.Column(db.Integer, db.ForeignKey('raw_materials.id'), nullable=False)
+    quantity_requested = db.Column(db.Numeric(12, 2), nullable=False)
+    quantity_issued = db.Column(db.Numeric(12, 2), default=0)
+
+    raw_material = db.relationship('RawMaterial', lazy='joined')
 
 
 class AuditLog(db.Model):

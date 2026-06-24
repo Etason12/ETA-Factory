@@ -57,6 +57,10 @@ def register_error_handlers(app):
     def not_found(error):
         return jsonify({'error': 'Not found'}), 404
 
+    @app.errorhandler(415)
+    def unsupported_media(error):
+        return jsonify({'error': 'Unsupported media type'}), 415
+
     @app.errorhandler(422)
     def unprocessable(error):
         return jsonify({'error': 'Unprocessable entity'}), 422

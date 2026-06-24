@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { productsApi } from '../../api/endpoints';
 import type { ProductCategory, Unit } from '../../types';
+import { formatCurrency } from '../../utils/format';
 
 interface FormData {
   sku: string;
@@ -18,6 +19,7 @@ interface FormData {
   is_active: boolean;
   min_stock_level: number;
   max_stock_level: number;
+  costing_method: string;
 }
 
 const emptyForm: FormData = {
@@ -31,6 +33,7 @@ const emptyForm: FormData = {
   is_active: true,
   min_stock_level: 0,
   max_stock_level: 0,
+  costing_method: 'standard',
 };
 
 export default function ProductFormPage() {
@@ -46,6 +49,8 @@ export default function ProductFormPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [bomTotalCost, setBomTotalCost] = useState<number | null>(null);
+  const [hasBom, setHasBom] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -59,18 +64,32 @@ export default function ProductFormPage() {
         setUnits(unitRes);
 
         if (id) {
-          const product = await productsApi.get(Number(id));
+          const [product, bomData] = await Promise.all([
+            productsApi.get(Number(id)),
+            productsApi.getBom(Number(id)).catch(() => null),
+          ]);
+
+          const bomComponents = bomData?.components || [];
+          const hasBomItems = bomComponents.length > 0;
+          setHasBom(hasBomItems);
+
+          const totalBom = hasBomItems
+            ? (Number(bomData.material_cost) + Number(bomData.labor_cost) + Number(bomData.utility_cost))
+            : 0;
+          setBomTotalCost(hasBomItems ? totalBom : null);
+
           setForm({
             sku: product.sku,
             name: product.name,
             description: product.description || '',
             unit_price: product.unit_price,
-            cost_price: product.cost_price,
+            cost_price: hasBomItems ? totalBom : (product.cost_price || 0),
             category_id: product.category_id,
             unit_id: product.unit_id,
             is_active: product.is_active,
             min_stock_level: product.min_stock_level || 0,
             max_stock_level: product.max_stock_level || 0,
+            costing_method: product.costing_method || 'standard',
           });
         }
       } catch (err: any) {
@@ -99,7 +118,7 @@ export default function ProductFormPage() {
         await productsApi.update(Number(id), payload);
         navigate('/products');
       } else {
-        await productsApi.create(payload);
+        const newProduct = await productsApi.create(payload);
         if (continueAdding) {
             setForm(emptyForm);
         } else {
@@ -145,7 +164,28 @@ export default function ProductFormPage() {
               <TextField fullWidth required type="number" label="Unit Price" value={form.unit_price} onChange={handleChange('unit_price')} inputProps={{ min: 0, step: 0.01 }} disabled={isView} />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField fullWidth required type="number" label="Cost Price" value={form.cost_price} onChange={handleChange('cost_price')} inputProps={{ min: 0, step: 0.01 }} disabled={isView} />
+              <TextField
+                fullWidth required type="number" label="Cost Price"
+                value={form.cost_price}
+                onChange={handleChange('cost_price')}
+                inputProps={{ min: 0, step: 0.01 }}
+                disabled={isView || hasBom}
+                helperText={hasBom ? `Auto-calculated from BOM (${formatCurrency(bomTotalCost!)})` : 'Manual cost for non-manufactured products'}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl fullWidth disabled={isView}>
+                <InputLabel>Costing Method</InputLabel>
+                <Select
+                  label="Costing Method"
+                  value={form.costing_method}
+                  onChange={(e) => setForm((prev) => ({ ...prev, costing_method: e.target.value }))}
+                >
+                  <MenuItem value="standard">Standard Cost</MenuItem>
+                  <MenuItem value="weighted_average">Weighted Average</MenuItem>
+                  <MenuItem value="fifo">FIFO (First In, First Out)</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth type="number" label="Min Stock Level" value={form.min_stock_level} onChange={handleChange('min_stock_level')} inputProps={{ min: 0 }} helperText="Items at or below this trigger low-stock alerts" disabled={isView} />

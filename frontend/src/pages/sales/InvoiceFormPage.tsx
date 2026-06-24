@@ -7,7 +7,7 @@ import {
 import { salesApi, customersApi } from '../../api/endpoints';
 import type { Customer, SalesOrder } from '../../types';
 import PageHeader from '../../components/common/PageHeader';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, todayStr } from '../../utils/format';
 
 export default function InvoiceFormPage() {
   const navigate = useNavigate();
@@ -15,11 +15,11 @@ export default function InvoiceFormPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   
-  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${todayStr.replace(/-/g, '')}-001`);
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [salesOrderId, setSalesOrderId] = useState<number | null>(null);
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(todayStr);
+  const [dueDate, setDueDate] = useState(todayStr);
   const [notes, setNotes] = useState('');
   
   const [subtotal, setSubtotal] = useState(0);

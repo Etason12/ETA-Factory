@@ -1,9 +1,9 @@
 from flask import jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models.models import Product, ProductCategory, Unit, db
-from utils.helpers import paginate, generate_unique_code
+from models.models import Product, ProductCategory, Unit, BOMItem, RawMaterial, db
+from utils.helpers import paginate, generate_unique_code, escape_like
 from utils.error_handlers import NotFoundError, ValidationError, ConflictError
-from api.decorators import role_required, permission_required, audit_log
+from api.decorators import permission_required, audit_log
 from . import products_bp
 
 
@@ -21,11 +21,12 @@ def list_products():
     query = Product.query.filter(Product.is_deleted == False)
 
     if search:
+        safe = escape_like(search)
         query = query.filter(
             db.or_(
-                Product.name.ilike(f'%{search}%'),
-                Product.sku.ilike(f'%{search}%'),
-                Product.description.ilike(f'%{search}%'),
+                Product.name.ilike(f'%{safe}%'),
+                Product.sku.ilike(f'%{safe}%'),
+                Product.description.ilike(f'%{safe}%'),
             )
         )
     if category_id:
@@ -53,6 +54,9 @@ def list_products():
             'is_active': p.is_active,
             'min_stock_level': float(p.min_stock_level) if p.min_stock_level else 0,
             'max_stock_level': float(p.max_stock_level) if p.max_stock_level else 0,
+            'costing_method': p.costing_method,
+            'bom_labor_cost': float(p.bom_labor_cost) if p.bom_labor_cost else 0,
+            'bom_utility_cost': float(p.bom_utility_cost) if p.bom_utility_cost else 0,
             'created_at': p.created_at.isoformat() if p.created_at else None,
         })
 
@@ -92,17 +96,27 @@ def create_product():
     if not Unit.query.get(unit_id):
         raise ValidationError('Invalid unit_id')
 
+    unit_price = float(data.get('unit_price', 0))
+    cost_price = float(data.get('cost_price', 0))
+    if unit_price < 0:
+        raise ValidationError('unit_price cannot be negative')
+    if cost_price < 0:
+        raise ValidationError('cost_price cannot be negative')
+
     product = Product(
         sku=sku,
         name=name,
         description=data.get('description', '').strip(),
-        unit_price=data.get('unit_price', 0),
-        cost_price=data.get('cost_price', 0),
+        unit_price=unit_price,
+        cost_price=cost_price,
         category_id=category_id,
         unit_id=unit_id,
         is_active=data.get('is_active', True),
         min_stock_level=data.get('min_stock_level', 0),
         max_stock_level=data.get('max_stock_level', 0),
+        costing_method=data.get('costing_method', 'standard'),
+        bom_labor_cost=data.get('bom_labor_cost', 0),
+        bom_utility_cost=data.get('bom_utility_cost', 0),
         created_by_id=int(get_jwt_identity()),
     )
     db.session.add(product)
@@ -140,6 +154,9 @@ def get_product(id):
         'is_active': product.is_active,
         'min_stock_level': float(product.min_stock_level) if product.min_stock_level else 0,
         'max_stock_level': float(product.max_stock_level) if product.max_stock_level else 0,
+        'costing_method': product.costing_method,
+        'bom_labor_cost': float(product.bom_labor_cost) if product.bom_labor_cost else 0,
+        'bom_utility_cost': float(product.bom_utility_cost) if product.bom_utility_cost else 0,
         'created_at': product.created_at.isoformat() if product.created_at else None,
         'updated_at': product.updated_at.isoformat() if product.updated_at else None,
     }}), 200
@@ -147,7 +164,7 @@ def get_product(id):
 
 @products_bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()
-@audit_log('update', 'Product')
+@audit_log('update', 'Product', entity_getter=lambda id, **kw: Product.query.get(id))
 @permission_required('products.edit')
 def update_product(id):
     product = Product.query.filter(Product.id == id, Product.is_deleted == False).first()
@@ -186,6 +203,15 @@ def update_product(id):
         product.min_stock_level = float(data['min_stock_level'])
     if data.get('max_stock_level') is not None:
         product.max_stock_level = float(data['max_stock_level'])
+    if data.get('costing_method') is not None:
+        valid = ['standard', 'weighted_average', 'fifo']
+        if data['costing_method'] not in valid:
+            raise ValidationError(f'costing_method must be one of: {", ".join(valid)}')
+        product.costing_method = data['costing_method']
+    if data.get('bom_labor_cost') is not None:
+        product.bom_labor_cost = float(data['bom_labor_cost'])
+    if data.get('bom_utility_cost') is not None:
+        product.bom_utility_cost = float(data['bom_utility_cost'])
 
     product.updated_by_id = int(get_jwt_identity())
     try:
@@ -197,24 +223,134 @@ def update_product(id):
     return jsonify({'message': 'Product updated successfully'}), 200
 
 
-@products_bp.route('/<int:id>', methods=['DELETE'])
+@products_bp.route('/<int:id>/bom', methods=['GET'])
 @jwt_required()
-@audit_log('delete', 'Product')
-@permission_required('products.delete')
-def delete_product(id):
+@permission_required('products.view')
+def get_bom(id):
     product = Product.query.filter(Product.id == id, Product.is_deleted == False).first()
     if not product:
         raise NotFoundError('Product not found')
 
-    product.soft_delete()
-    product.updated_by_id = int(get_jwt_identity())
+    bom_items = BOMItem.query.filter(BOMItem.product_id == id).all()
+    components = []
+    material_cost = 0
+    for item in bom_items:
+        cost = float(item.quantity) * float(item.raw_material.cost_price or 0)
+        material_cost += cost
+        components.append({
+            'id': item.id,
+            'raw_material_id': item.raw_material_id,
+            'raw_material_name': item.raw_material.name,
+            'raw_material_sku': item.raw_material.sku,
+            'quantity': float(item.quantity),
+            'unit_name': item.raw_material.unit.name if item.raw_material.unit else None,
+            'unit_cost': float(item.raw_material.cost_price or 0),
+            'line_cost': cost,
+        })
+
+    labor = float(product.bom_labor_cost or 0)
+    utility = float(product.bom_utility_cost or 0)
+    total = material_cost + labor + utility
+
+    return jsonify({
+        'components': components,
+        'material_cost': material_cost,
+        'labor_cost': labor,
+        'utility_cost': utility,
+        'total_bom_cost': total,
+    }), 200
+
+
+@products_bp.route('/<int:id>/bom', methods=['POST'])
+@jwt_required()
+@audit_log('update', 'Product')
+@permission_required('products.edit')
+def add_update_bom(id):
+    product = Product.query.filter(Product.id == id, Product.is_deleted == False).first()
+    if not product:
+        raise NotFoundError('Product not found')
+
+    data = request.get_json()
+    if not data or 'raw_material_id' not in data or 'quantity' not in data:
+        raise ValidationError('raw_material_id and quantity are required')
+
+    raw_material_id = data['raw_material_id']
+    quantity = data['quantity']
+
+    raw_material = RawMaterial.query.filter(RawMaterial.id == raw_material_id, RawMaterial.is_deleted == False).first()
+    if not raw_material:
+        raise NotFoundError('Raw material not found')
+
+    bom_item = BOMItem.query.filter(BOMItem.product_id == id, BOMItem.raw_material_id == raw_material_id).first()
+    if bom_item:
+        bom_item.quantity = quantity
+    else:
+        bom_item = BOMItem(product_id=id, raw_material_id=raw_material_id, quantity=quantity, created_by_id=int(get_jwt_identity()))
+        db.session.add(bom_item)
+
     try:
         db.session.commit()
     except Exception:
         db.session.rollback()
         raise
 
-    return jsonify({'message': 'Product deleted successfully'}), 200
+    return jsonify({'message': 'BOM updated successfully'}), 200
+
+
+@products_bp.route('/<int:id>/bom/<int:raw_material_id>', methods=['DELETE'])
+@jwt_required()
+@audit_log('update', 'Product')
+@permission_required('products.edit')
+def delete_bom_item(id, raw_material_id):
+    bom_item = BOMItem.query.filter(BOMItem.product_id == id, BOMItem.raw_material_id == raw_material_id).first()
+    if not bom_item:
+        raise NotFoundError('BOM item not found')
+
+    db.session.delete(bom_item)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return jsonify({'message': 'BOM item removed successfully'}), 200
+
+
+@products_bp.route('/<int:id>/bom/calculate-cost', methods=['GET'])
+@jwt_required()
+@permission_required('products.view')
+def calculate_bom_cost(id):
+    product = Product.query.filter(Product.id == id, Product.is_deleted == False).first()
+    if not product:
+        raise NotFoundError('Product not found')
+
+    bom_items = BOMItem.query.filter(BOMItem.product_id == id).all()
+    material_cost = 0
+    details = []
+    for item in bom_items:
+        cost = float(item.quantity) * float(item.raw_material.cost_price or 0)
+        material_cost += cost
+        details.append({
+            'raw_material_id': item.raw_material_id,
+            'raw_material_name': item.raw_material.name,
+            'quantity': float(item.quantity),
+            'unit_cost': float(item.raw_material.cost_price or 0),
+            'line_cost': cost,
+        })
+
+    labor = float(product.bom_labor_cost or 0)
+    utility = float(product.bom_utility_cost or 0)
+    total = material_cost + labor + utility
+
+    return jsonify({
+        'product_id': id,
+        'product_name': product.name,
+        'material_cost': material_cost,
+        'labor_cost': labor,
+        'utility_cost': utility,
+        'total_unit_cost': total,
+        'details': details,
+    }), 200
 
 
 @products_bp.route('/categories', methods=['GET'])
@@ -284,6 +420,9 @@ def delete_category(id):
     category = ProductCategory.query.filter(ProductCategory.id == id, ProductCategory.is_deleted == False).first()
     if not category:
         raise NotFoundError('Category not found')
+
+    if Product.query.filter_by(category_id=id, is_deleted=False).first():
+        raise ValidationError('Cannot delete category with existing products')
 
     from datetime import datetime
     category.name = f"{category.name}__deleted_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
