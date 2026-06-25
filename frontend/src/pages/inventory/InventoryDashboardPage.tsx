@@ -77,7 +77,7 @@ export default function InventoryDashboardPage() {
         <Grid size={{ xs: 12, md: 8 }}>
           <Paper sx={{ p: 3, borderRadius: 2, height: 400 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Stock Distribution by Warehouse</Typography>
-            <ResponsiveContainer width="100%" height="90%">
+            <ResponsiveContainer width="100%" height={340}>
               <BarChart data={summary.warehouse_data || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
@@ -91,7 +91,7 @@ export default function InventoryDashboardPage() {
         <Grid size={{ xs: 12, md: 4 }}>
           <Paper sx={{ p: 3, borderRadius: 2, height: 400 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Stock Health</Typography>
-            <ResponsiveContainer width="100%" height="90%">
+            <ResponsiveContainer width="100%" height={340}>
               <PieChart>
                 <Pie
                   data={summary.stock_status || []}
