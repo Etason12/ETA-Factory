@@ -94,15 +94,18 @@ export default function DashboardPage() {
         salesApi.orders.list({ per_page: 100 }).catch(() => ({ items: [] })),
         productionApi.list({ per_page: 20 }).catch(() => ({ items: [] })),
       ]);
-      const revenueData = trend.length > 0 ? trend : MONTHS.map((name) => ({ name, revenue: 0 }));
+      const trendArr = Array.isArray(trend) ? trend : [];
+      const revenueData = trendArr.length > 0 ? trendArr : MONTHS.map((name) => ({ name, revenue: 0 }));
+      const orderItems = Array.isArray(orderStats?.items) ? orderStats.items : [];
       const statusCounts: Record<string, number> = {};
-      for (const o of orderStats.items || []) {
+      for (const o of orderItems) {
         const s = (o as unknown as Record<string, unknown>).status as string || 'Unknown';
         statusCounts[s] = (statusCounts[s] || 0) + 1;
       }
       const orderStatusData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
+      const prodItems = Array.isArray(prodTrend?.items) ? prodTrend.items : [];
       const prodByMonth: Record<string, number> = {};
-      for (const b of prodTrend.items || []) {
+      for (const b of prodItems) {
         const date = (b as unknown as Record<string, unknown>).created_at as string;
         if (date) {
           const m = dayjs(date).format('MMM');
@@ -136,6 +139,12 @@ export default function DashboardPage() {
     { icon: <PrecisionManufacturingIcon />, label: 'Production Batches', value: data?.production_batches ?? 0, color: 'secondary' },
   ];
 
+  const revenueData = data?.revenueData ?? [];
+  const orderStatusData = data?.orderStatusData ?? [];
+  const productionTrendData = data?.productionTrendData ?? [];
+
+  const pieColors = [theme.palette.primary.main, theme.palette.success.main, theme.palette.warning.main, theme.palette.error.main, theme.palette.info.main];
+
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Overview of your factory operations" />
@@ -155,15 +164,17 @@ export default function DashboardPage() {
       <Paper sx={{ p: 3, mt: 5 }}>
         <Typography variant="h6" sx={{ mb: 2 }}>Revenue Trend</Typography>
         <Box sx={{ height: 300 }}>
+          {isLoading ? <Skeleton variant="rectangular" height={300} /> : (
             <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={data?.revenueData ?? []}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <RechartsTooltip />
-                    <Line type="monotone" dataKey="revenue" stroke={theme.palette.primary.main} strokeWidth={3} />
-                </LineChart>
+              <LineChart data={revenueData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <RechartsTooltip />
+                <Line type="monotone" dataKey="revenue" stroke={theme.palette.primary.main} strokeWidth={3} />
+              </LineChart>
             </ResponsiveContainer>
+          )}
         </Box>
       </Paper>
 
@@ -172,23 +183,25 @@ export default function DashboardPage() {
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Order Status Breakdown</Typography>
             <Box sx={{ height: 280 }}>
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={data?.orderStatusData ?? []}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label={({ name, value }) => `${name}: ${value}`}
-                  >
-                    {(data?.orderStatusData ?? []).map((_, i) => (
-                      <Cell key={i} fill={[theme.palette.primary.main, theme.palette.success.main, theme.palette.warning.main, theme.palette.error.main, theme.palette.info.main][i % 5]} />
-                    ))}
-                  </Pie>
-                  <Legend />
-                  <RechartsTooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              {isLoading || orderStatusData.length === 0 ? <Skeleton variant="rectangular" height={280} /> : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={orderStatusData}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={({ name, value }: { name?: string; value?: number }) => `${name ?? ''}: ${value ?? 0}`}
+                    >
+                      {orderStatusData.map((_: unknown, i: number) => (
+                        <Cell key={i} fill={pieColors[i % pieColors.length]} />
+                      ))}
+                    </Pie>
+                    <Legend />
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </Box>
           </Paper>
         </Grid>
@@ -196,15 +209,17 @@ export default function DashboardPage() {
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Production Batches by Month</Typography>
             <Box sx={{ height: 280 }}>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={data?.productionTrendData ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <RechartsTooltip />
-                  <Bar dataKey="batches" fill={theme.palette.secondary.main} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {isLoading ? <Skeleton variant="rectangular" height={280} /> : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={productionTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis allowDecimals={false} />
+                    <RechartsTooltip />
+                    <Bar dataKey="batches" fill={theme.palette.secondary.main} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </Box>
           </Paper>
         </Grid>
