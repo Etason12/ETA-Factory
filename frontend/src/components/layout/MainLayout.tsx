@@ -208,7 +208,7 @@ export default function MainLayout() {
     }
 
     setOpenGroups(activeGroup ? { [activeGroup]: true } : {});
-    if (Object.keys(activeItems).length) setOpenItems(prev => ({ ...prev, ...activeItems }));
+    setOpenItems(Object.keys(activeItems).length ? activeItems : {});
   }, [location.pathname]);
 
   const handleDrawerToggle = () => {
