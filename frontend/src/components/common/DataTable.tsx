@@ -22,7 +22,7 @@ interface DataTableProps {
   onPerPageChange?: (perPage: number) => void;
 }
 
-export default function DataTable({ columns, data, loading, total = 0, page = 1, perPage = 20, onPageChange, onPerPageChange }: DataTableProps) {
+export default function DataTable({ columns, data, loading, total = 0, page = 1, perPage = 25, onPageChange, onPerPageChange }: DataTableProps) {
   const [rowsPerPage, setRowsPerPage] = useState(perPage);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
@@ -128,7 +128,7 @@ export default function DataTable({ columns, data, loading, total = 0, page = 1,
           rowsPerPage={rowsPerPage}
           onPageChange={(_, p) => onPageChange(p + 1)}
           onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); onPerPageChange?.(parseInt(e.target.value, 10)); }}
-          rowsPerPageOptions={[10, 20, 50, 100]}
+          rowsPerPageOptions={[10, 25, 50, 100]}
         />
       )}
     </Paper>

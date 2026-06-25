@@ -75,7 +75,7 @@ export default function LowStockPage() {
           loading={loading}
           total={total}
           page={page}
-          perPage={20}
+          perPage={25}
           onPageChange={setPage}
           onPerPageChange={() => setPage(1)}
         />

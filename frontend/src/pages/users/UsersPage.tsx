@@ -19,7 +19,7 @@ export default function UsersPage() {
   const [data, setData] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(false);
 
   const fetchUsers = useCallback(async () => {

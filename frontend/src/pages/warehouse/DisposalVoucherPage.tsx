@@ -43,7 +43,7 @@ export default function DisposalVoucherPage() {
   const [data, setData] = useState<DisposalVoucher[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState(monthAgoStr);
   const [dateTo, setDateTo] = useState(todayStr);

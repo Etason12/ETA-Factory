@@ -27,7 +27,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(25);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState(monthAgoStr);
   const [dateTo, setDateTo] = useState(todayStr);

@@ -224,7 +224,7 @@ export default function OpeningBalancePage() {
         loading={loadingExisting}
         total={total}
         page={page}
-        perPage={20}
+        perPage={25}
         onPageChange={setPage}
         onPerPageChange={() => setPage(1)}
       />
