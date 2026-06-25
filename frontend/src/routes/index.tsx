@@ -123,8 +123,8 @@ export default function AppRouter() {
           <Route path="reports/ledger-reconciliation" element={<LedgerReconciliationReportPage />} />
           <Route path="audit" element={<ProtectedRoute roles={['Owner', 'General Manager', 'Auditor']}><AuditLogsPage /></ProtectedRoute>} />
           <Route path="settings" element={<ProtectedRoute roles={['Owner']}><SettingsPage /></ProtectedRoute>} />
-          <Route path="settings/categories" element={<ProtectedRoute roles={['Owner', 'General Manager']}><CategoryListPage /></ProtectedRoute>} />
-          <Route path="settings/units" element={<ProtectedRoute roles={['Owner', 'General Manager']}><UnitListPage /></ProtectedRoute>} />
+          <Route path="settings/categories" element={<CategoryListPage />} />
+          <Route path="settings/units" element={<UnitListPage />} />
           <Route path="roles" element={<ProtectedRoute roles={['Owner', 'General Manager']}><RolesListPage /></ProtectedRoute>} />
           <Route path="roles/new" element={<ProtectedRoute roles={['Owner', 'General Manager']}><RoleFormPage /></ProtectedRoute>} />
           <Route path="roles/:id/edit" element={<ProtectedRoute roles={['Owner', 'General Manager']}><RoleFormPage /></ProtectedRoute>} />
