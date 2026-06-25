@@ -33,8 +33,8 @@ export default function InvoiceFormPage() {
       customersApi.list({ per_page: 1000 }),
       salesApi.orders.list({ per_page: 1000, status: 'Approved' }),
     ]).then(([c, s]) => {
-      setCustomers(c.items);
-      setSalesOrders(s.items);
+      setCustomers(c.items || []);
+      setSalesOrders(s.items || []);
     });
   }, []);
 

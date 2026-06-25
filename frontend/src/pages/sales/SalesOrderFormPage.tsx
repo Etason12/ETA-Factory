@@ -55,10 +55,10 @@ export default function SalesOrderFormPage() {
       warehousesApi.list({ per_page: 1000 }),
       branchesApi.list({ per_page: 1000 }),
     ]).then(([c, p, w, b]) => {
-      setCustomers(c.items);
-      setProducts(p.items);
-      setWarehouses(w.items);
-      setBranches(b.items);
+      setCustomers(c.items || []);
+      setProducts(p.items || []);
+      setWarehouses(w.items || []);
+      setBranches(b.items || []);
     });
 
     if (isEdit) {
@@ -85,7 +85,7 @@ export default function SalesOrderFormPage() {
     try {
       const res = await inventoryApi.list({ warehouse_id: whId, per_page: 5000 });
       const map: Record<number, StockInfo> = {};
-      for (const inv of res.items) {
+      for (const inv of (res.items || [])) {
         map[inv.product_id] = {
           quantity_on_hand: Number(inv.quantity_on_hand),
           reserved_quantity: Number(inv.reserved_quantity),

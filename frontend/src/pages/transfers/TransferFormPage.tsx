@@ -38,8 +38,8 @@ export default function TransferFormPage() {
       productsApi.list({ per_page: 1000 }),
       warehousesApi.list({ per_page: 1000 }),
     ]).then(([pRes, wRes]) => {
-      setProducts(pRes.items);
-      setWarehouses(wRes.items);
+      setProducts(pRes.items || []);
+      setWarehouses(wRes.items || []);
     });
   }, []);
 

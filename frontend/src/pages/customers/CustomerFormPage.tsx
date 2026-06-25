@@ -49,7 +49,7 @@ export default function CustomerFormPage() {
       setLoading(true);
       try {
         const branchRes = await branchesApi.list({ per_page: 500 });
-        setBranches(branchRes.items);
+        setBranches(branchRes.items || []);
 
         if (id) {
           const customer = await customersApi.get(Number(id));

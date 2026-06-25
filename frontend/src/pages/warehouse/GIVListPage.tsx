@@ -98,8 +98,8 @@ export default function GIVListPage() {
         warehousesApi.list({ per_page: 1000 }),
         productsApi.list({ per_page: 1000 }),
       ]).then(([wRes, pRes]) => {
-        setWarehouses(wRes.items);
-        setProducts(pRes.items);
+        setWarehouses(wRes.items || []);
+        setProducts(pRes.items || []);
       });
     }
   }, [formOpen, prefilledOrderId]);

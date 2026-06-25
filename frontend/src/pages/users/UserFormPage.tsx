@@ -51,7 +51,7 @@ export default function UserFormPage() {
           branchesApi.list({ per_page: 200 }),
         ]);
         setRoles(rolesRes.data);
-        setBranches(branchesRes.items);
+        setBranches(branchesRes.items || []);
 
         if (id) {
           const user = await usersApi.get(Number(id));

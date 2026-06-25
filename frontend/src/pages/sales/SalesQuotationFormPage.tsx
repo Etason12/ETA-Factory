@@ -46,9 +46,9 @@ export default function SalesQuotationFormPage() {
       productsApi.list({ per_page: 1000 }),
       branchesApi.list({ per_page: 1000 }),
     ]).then(([c, p, b]) => {
-      setCustomers(c.items);
-      setProducts(p.items);
-      setBranches(b.items);
+      setCustomers(c.items || []);
+      setProducts(p.items || []);
+      setBranches(b.items || []);
     });
     
     if (isEdit) {

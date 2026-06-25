@@ -46,8 +46,8 @@ export default function OpeningBalancePage() {
       productsApi.list({ per_page: 99999 }),
       rawMaterialsApi.list({ per_page: 99999 }),
     ]).then(([wRes, pRes, rmRes]) => {
-      setWarehouses(wRes.items);
-      setProducts(pRes.items);
+      setWarehouses(wRes.items || []);
+      setProducts(pRes.items || []);
       setRawMaterials(rmRes.items || []);
     });
   }, []);
