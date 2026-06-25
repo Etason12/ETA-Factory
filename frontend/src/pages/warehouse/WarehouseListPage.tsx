@@ -45,7 +45,7 @@ export default function WarehouseListPage() {
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
-    branchesApi.list({ per_page: 1000, is_active: 1 }).then((res) => setBranches(res.items));
+    branchesApi.list({ per_page: 1000, is_active: 1 }).then((res) => setBranches(res.items || []));
   }, []);
 
   const fetch = useCallback(async () => {
@@ -54,8 +54,8 @@ export default function WarehouseListPage() {
       const params: any = { page, per_page: perPage };
       if (branchFilter) params.branch_id = Number(branchFilter);
       const res = await warehousesApi.list(params);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }

@@ -26,8 +26,8 @@ export default function BranchesPage() {
     setLoading(true);
     try {
       const res = await branchesApi.list({ page, per_page: perPage });
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }

@@ -80,8 +80,8 @@ export default function DisposalVoucherPage() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       const res = await warehousesApi.disposalList(params);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }

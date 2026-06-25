@@ -30,8 +30,8 @@ export default function RawMaterialsPage() {
       const params: Record<string, unknown> = { page, per_page: perPage };
       if (search.trim()) params.search = search.trim();
       const res = await rawMaterialsApi.list(params);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }

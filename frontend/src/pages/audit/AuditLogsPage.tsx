@@ -99,8 +99,8 @@ export default function AuditLogsPage() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       const res = await auditApi.list(params);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }

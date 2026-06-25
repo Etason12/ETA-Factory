@@ -56,8 +56,8 @@ export default function InvoicesPage() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       const res = await salesApi.invoices.list(params);
-      setInvoices(res.items);
-      setTotal(res.total);
+      setInvoices(res.items || []);
+      setTotal(res.total || 0);
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Failed to load invoices');
     } finally {

@@ -43,8 +43,8 @@ export default function SalesQuotationsPage() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       const res = await salesApi.quotations.list(params);
-      setQuotations(res.items);
-      setTotal(res.total);
+      setQuotations(res.items || []);
+      setTotal(res.total || 0);
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Failed to load quotations');
     } finally {

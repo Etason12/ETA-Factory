@@ -63,8 +63,8 @@ export default function ProductsPage() {
         productsApi.list(params),
         page === 1 && !search ? null : productsApi.list({ per_page: 10000 }).catch(() => null),
       ]);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
       const fullData = page === 1 && !search ? res : allRes;
       if (fullData) {
         const items = fullData.items || [];

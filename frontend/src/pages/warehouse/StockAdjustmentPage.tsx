@@ -70,7 +70,7 @@ export default function StockAdjustmentPage() {
   };
 
   useEffect(() => {
-    warehousesApi.list({ per_page: 1000 }).then((res) => setWarehouses(res.items));
+    warehousesApi.list({ per_page: 1000 }).then((res) => setWarehouses(res.items || []));
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);

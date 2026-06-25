@@ -39,8 +39,8 @@ export default function ProductionBatchesPage() {
       const params: Record<string, unknown> = { page, per_page: perPage };
       if (search.trim()) params.search = search.trim();
       const res = await productionApi.list(params);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }

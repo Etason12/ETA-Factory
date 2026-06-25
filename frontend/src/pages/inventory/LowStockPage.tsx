@@ -18,7 +18,7 @@ export default function LowStockPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    warehousesApi.list({ per_page: 1000 }).then(res => setWarehouses(res.items));
+    warehousesApi.list({ per_page: 1000 }).then(res => setWarehouses(res.items || []));
   }, []);
 
   const fetchData = useCallback(async () => {

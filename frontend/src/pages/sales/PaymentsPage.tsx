@@ -28,8 +28,8 @@ export default function PaymentsPage() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       const res = await salesApi.payments.list(params);
-      setPayments(res.items);
-      setTotal(res.total);
+      setPayments(res.items || []);
+      setTotal(res.total || 0);
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Failed to load payments');
     } finally {

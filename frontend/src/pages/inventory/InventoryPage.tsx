@@ -22,7 +22,7 @@ export default function InventoryPage() {
   const fetchWarehouses = useCallback(async () => {
     try {
       const res = await warehousesApi.list({ per_page: 200 });
-      setWarehouses(res.items);
+      setWarehouses(res.items || []);
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Failed to load warehouses');
     }
@@ -35,8 +35,8 @@ export default function InventoryPage() {
       if (search.trim()) params.search = search.trim();
       if (warehouseId !== '') params.warehouse_id = warehouseId;
       const res = await inventoryApi.list(params);
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Failed to load inventory');
     } finally {

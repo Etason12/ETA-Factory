@@ -12,7 +12,7 @@ export default function StocktakePage() {
   const [counts, setCounts] = useState<Record<number, number>>({});
 
   useEffect(() => {
-    warehousesApi.list({ per_page: 1000 }).then(res => setWarehouses(res.items));
+    warehousesApi.list({ per_page: 1000 }).then(res => setWarehouses(res.items || []));
   }, []);
 
   const loadInventory = async (warehouseId: number) => {

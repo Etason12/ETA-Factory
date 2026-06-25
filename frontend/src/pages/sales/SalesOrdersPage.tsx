@@ -40,8 +40,8 @@ export default function SalesOrdersPage() {
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       const res = await salesApi.orders.list(params);
-      setOrders(res.items);
-      setTotal(res.total);
+      setOrders(res.items || []);
+      setTotal(res.total || 0);
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Failed to load orders');
     } finally {

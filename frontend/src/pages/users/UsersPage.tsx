@@ -26,8 +26,8 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const res = await usersApi.list({ page, per_page: perPage });
-      setData(res.items);
-      setTotal(res.total);
+      setData(res.items || []);
+      setTotal(res.total || 0);
     } finally {
       setLoading(false);
     }
