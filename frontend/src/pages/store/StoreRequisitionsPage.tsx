@@ -18,7 +18,7 @@ export default function StoreRequisitionsPage() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [total, setTotal] = useState(0);
 
   const fetch = async () => {

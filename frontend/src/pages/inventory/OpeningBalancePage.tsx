@@ -55,7 +55,7 @@ export default function OpeningBalancePage() {
   const fetchExisting = useCallback(async () => {
     setLoadingExisting(true);
     try {
-      const params: any = { page, per_page: 20 };
+      const params: any = { page, per_page: 25 };
       if (warehouseId) params.warehouse_id = warehouseId;
       let res: any;
       if (productType === 'finished_goods') {

@@ -24,7 +24,7 @@ export default function LowStockPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, per_page: 20 };
+      const params: any = { page, per_page: 25 };
       if (warehouseId) params.warehouse_id = warehouseId;
       const res = await inventoryApi.lowStock(params);
       setData(res.low_stock_items || []);

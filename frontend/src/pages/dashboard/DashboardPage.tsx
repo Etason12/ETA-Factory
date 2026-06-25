@@ -92,7 +92,7 @@ export default function DashboardPage() {
         salesApi.getRevenue().catch(() => ({ total_revenue: 0 })),
         salesApi.getRevenueTrend().catch(() => []),
         salesApi.orders.list({ per_page: 100 }).catch(() => ({ items: [] })),
-        productionApi.list({ per_page: 20 }).catch(() => ({ items: [] })),
+        productionApi.list({ per_page: 25 }).catch(() => ({ items: [] })),
       ]);
       const trendArr = Array.isArray(trend) ? trend : [];
       const revenueData = trendArr.length > 0 ? trendArr : MONTHS.map((name) => ({ name, revenue: 0 }));
