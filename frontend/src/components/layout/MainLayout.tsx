@@ -208,7 +208,7 @@ export default function MainLayout() {
     }
 
     setOpenGroups(activeGroup ? { [activeGroup]: true } : {});
-    setOpenItems(Object.keys(activeItems).length ? activeItems : {});
+    setOpenItems(prev => Object.keys(activeItems).length ? { ...prev, ...activeItems } : {});
   }, [location.pathname]);
 
   const handleDrawerToggle = () => {
@@ -264,10 +264,11 @@ export default function MainLayout() {
       <ListItemButton
         selected={!hasChildren && active}
         onClick={() => {
-          navigate(item.path);
           if (hasChildren) {
             toggleItem(item.path);
             if (collapsed && !isMobile) setCollapsed(false);
+          } else {
+            navigate(item.path);
           }
           if (isMobile) setMobileOpen(false);
         }}
