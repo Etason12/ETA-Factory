@@ -17,11 +17,11 @@ export default function LedgerReconciliationReportPage() {
         inventoryApi.list({ per_page: 10000 }),
         inventoryApi.ledger({ per_page: 100000 })
       ]);
-      const ledgerMap = ledger.items.reduce((acc, entry) => {
+      const ledgerMap = (ledger.items || []).reduce((acc, entry) => {
         acc[entry.product_id] = (acc[entry.product_id] || 0) + entry.quantity;
         return acc;
       }, {} as Record<number, number>);
-      setData(inv.items.map((i: any) => ({
+      setData((inv.items || []).map((i: any) => ({
         product_id: i.product_id,
         product_name: i.product_name,
         sku: i.sku || '',

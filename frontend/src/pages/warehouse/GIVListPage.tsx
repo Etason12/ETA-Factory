@@ -91,7 +91,7 @@ export default function GIVListPage() {
         salesApi.orders.get(prefilledOrderId).then((order) => {
             setForm({...form, warehouse_id: order.warehouse_id});
             fetchStock(order.warehouse_id);
-            setLineItems(order.items.map((i: any, idx: number) => ({ product_id: i.product_id, product_name: i.product_name || '', quantity: i.quantity, batch_number: `BTCH-${Date.now()}-${idx}` })));
+            setLineItems((order.items || []).map((i: any, idx: number) => ({ product_id: i.product_id, product_name: i.product_name || '', quantity: i.quantity, batch_number: `BTCH-${Date.now()}-${idx}` })));
         });
       }
       Promise.all([

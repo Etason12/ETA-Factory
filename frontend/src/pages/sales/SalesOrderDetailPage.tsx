@@ -53,7 +53,7 @@ export default function SalesOrderDetailPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {order.items.map((item) => (
+            {(order.items || []).map((item) => (
               <TableRow key={item.id}>
                 <TableCell>{item.product_name}</TableCell>
                 <TableCell align="right">{item.quantity}</TableCell>
