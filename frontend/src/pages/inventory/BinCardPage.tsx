@@ -26,8 +26,8 @@ export default function BinCardPage() {
       warehousesApi.list({ per_page: 1000 }),
       productsApi.list({ per_page: 1000 }),
     ]).then(([wRes, pRes]) => {
-      setWarehouses(wRes.items);
-      setProducts(pRes.items);
+      setWarehouses(wRes.items || []);
+      setProducts(pRes.items || []);
     });
   }, []);
 
@@ -161,9 +161,9 @@ export default function BinCardPage() {
                   <TableCell colSpan={4}><Typography fontWeight={600}>Opening Balance</Typography></TableCell>
                   <TableCell align="right" colSpan={3}><Typography fontWeight={600}>{report.opening_balance}</Typography></TableCell>
                 </TableRow>
-                {report.entries.length === 0 ? (
+                {(report.entries || []).length === 0 ? (
                   <TableRow><TableCell colSpan={7} align="center">No movements this month</TableCell></TableRow>
-                ) : report.entries.map((e: any) => (
+                ) : (report.entries || []).map((e: any) => (
                   <TableRow key={e.id}>
                     <TableCell>{e.date ? new Date(e.date).toLocaleDateString() : '-'}</TableCell>
                     <TableCell><Chip label={e.movement_type} size="small" variant="outlined" /></TableCell>
@@ -211,9 +211,9 @@ export default function BinCardPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {report.products.length === 0 ? (
+                {(report.products || []).length === 0 ? (
                   <TableRow><TableCell colSpan={6} align="center">No products found in this warehouse</TableCell></TableRow>
-                ) : report.products.map((p: any) => (
+                ) : (report.products || []).map((p: any) => (
                   <TableRow key={p.product_id}>
                     <TableCell>{p.product_name}</TableCell>
                     <TableCell>{p.product_sku}</TableCell>
