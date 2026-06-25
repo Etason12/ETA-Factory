@@ -207,7 +207,7 @@ export default function MainLayout() {
       });
     }
 
-    if (activeGroup) setOpenGroups({ [activeGroup]: true });
+    setOpenGroups(activeGroup ? { [activeGroup]: true } : {});
     if (Object.keys(activeItems).length) setOpenItems(prev => ({ ...prev, ...activeItems }));
   }, [location.pathname]);
 
