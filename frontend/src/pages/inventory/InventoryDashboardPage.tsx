@@ -41,8 +41,8 @@ export default function InventoryDashboardPage() {
   const cards = [
     { label: 'Active Products', value: summary.total_products, icon: <InventoryIcon />, color: '#1976d2' },
     { label: 'Warehouses', value: summary.total_warehouses, icon: <WarehouseIcon />, color: '#388e3c' },
-    { label: 'Total Qty On Hand', value: summary.total_quantity_on_hand.toLocaleString(), icon: <MoveUpIcon />, color: '#f57c00' },
-    { label: 'Low Stock Items', value: summary.low_stock_count, icon: <WarningAmberIcon />, color: summary.low_stock_count > 0 ? '#d32f2f' : '#388e3c' },
+    { label: 'Total Qty On Hand', value: (summary.total_quantity_on_hand ?? 0).toLocaleString(), icon: <MoveUpIcon />, color: '#f57c00' },
+    { label: 'Low Stock Items', value: summary.low_stock_count ?? 0, icon: <WarningAmberIcon />, color: (summary.low_stock_count ?? 0) > 0 ? '#d32f2f' : '#388e3c' },
   ];
 
   const movements = summary.recent_movements || [];
@@ -66,10 +66,10 @@ export default function InventoryDashboardPage() {
         ))}
       </Grid>
 
-      {summary.low_stock_count > 0 && (
+      {(summary.low_stock_count ?? 0) > 0 && (
         <Paper sx={{ p: 2, mb: 3, bgcolor: '#fff3e0', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <WarningAmberIcon color="warning" />
-          <Typography>{summary.low_stock_count} item(s) below minimum stock level. <Chip label="View Low Stock" size="small" color="warning" component="a" href="/inventory/low-stock" clickable sx={{ ml: 1 }} /></Typography>
+          <Typography>{summary.low_stock_count ?? 0} item(s) below minimum stock level. <Chip label="View Low Stock" size="small" color="warning" component="a" href="/inventory/low-stock" clickable sx={{ ml: 1 }} /></Typography>
         </Paper>
       )}
 
@@ -78,7 +78,7 @@ export default function InventoryDashboardPage() {
           <Paper sx={{ p: 3, borderRadius: 2, height: 400 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Stock Distribution by Warehouse</Typography>
             <ResponsiveContainer width="100%" height="90%">
-              <BarChart data={summary.warehouse_data}>
+              <BarChart data={summary.warehouse_data || []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
@@ -94,7 +94,7 @@ export default function InventoryDashboardPage() {
             <ResponsiveContainer width="100%" height="90%">
               <PieChart>
                 <Pie
-                  data={summary.stock_status}
+                  data={summary.stock_status || []}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
